@@ -1,12 +1,19 @@
-const searchCriteria = "from:ticket@cinemacity.co.jp";
 const searchKey = "シネマシティ";
 
 function main() {
-  // 1時間に1度実行する
-  // 2時間前までのメールを検索する
+  // 実行日の1日前からのメールを取得する
+  const now = new Date(Date.now());
+  const newerThreshold = new Date(
+    now.getFullYear(),
+    now.getMonth(),
+    now.getDate() - 1,
+    0,
+    0,
+    0,
+  );
 
   // メールからチケット情報を取得する
-  const tickets = fetchTickets();
+  const tickets = fetchTickets(["ticket@cinemacity.co.jp"], newerThreshold);
 
   // チケット情報がカレンダーに登録されているか確認する
   const minStartTime = tickets
@@ -36,8 +43,13 @@ function main() {
 /**
  * チケット情報を取得する
  */
-function fetchTickets(): Ticket[] {
-  const criteria = searchCriteria;
+function fetchTickets(mailAddresses: string[], newerThreshold: Date): Ticket[] {
+  const mailAddressQuery = mailAddresses
+    .map((address) => `from:${address}`)
+    .join(" OR ");
+  const periodQuery = `newer:${newerThreshold.toISOString().slice(0, 10)}`;
+  const criteria = `(${mailAddressQuery}) AND ${periodQuery}`;
+
   const threads = GmailApp.search(criteria);
 
   let tickets: Ticket[] = [];
