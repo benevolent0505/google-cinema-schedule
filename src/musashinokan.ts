@@ -25,18 +25,24 @@ type MusashinokanReservation = {
   screening: MusashinokanScreening;
   ticketNumber: string;
   seats: string[];
-  ticketCount: number;
+  ticketType: string;
   totalPrice: number;
 };
 
 const MUSASHINOKAN_THEATER_NAME = "新宿武蔵野館";
+
+/**
+ * 新宿武蔵野館の予約メールには上映終了時刻が含まれないため、開始時刻から
+ * 既定の上映時間を加算して終了時刻を補完する。
+ */
+const MUSASHINOKAN_DEFAULT_SCREENING_MINUTES = 120;
 
 const MUSASHINOKAN_LABELS = {
   ticketNumber: "①予約番号：",
   screeningTime: "②",
   title: "③",
   theater: "④",
-  ticketCount: "⑤券種",
+  ticketType: "⑤",
   totalPrice: "合計",
   seats: "⑥座席番号：",
 } as const;
@@ -72,7 +78,7 @@ function musashinokanCanParse(raw: string): boolean {
     raw.includes("②") &&
     raw.includes("③") &&
     raw.includes("④") &&
-    raw.includes("⑤券種") &&
+    raw.includes("⑤") &&
     raw.includes("⑥座席番号：")
   );
 }
@@ -85,9 +91,7 @@ function musashinokanParseReservation(raw: string): MusashinokanReservation {
   const screening = musashinokanParseScreening(
     musashinokanExtractPrefixedValue(lines, MUSASHINOKAN_LABELS.screeningTime),
   );
-  const ticketCount = musashinokanParseTicketCount(
-    musashinokanExtractPrefixedValue(lines, MUSASHINOKAN_LABELS.ticketCount),
-  );
+  const ticketType = musashinokanExtractPrefixedValue(lines, MUSASHINOKAN_LABELS.ticketType);
   const totalPrice = musashinokanParsePrice(
     musashinokanExtractPrefixedValue(lines, MUSASHINOKAN_LABELS.totalPrice),
   );
@@ -106,7 +110,7 @@ function musashinokanParseReservation(raw: string): MusashinokanReservation {
     screening,
     ticketNumber,
     seats,
-    ticketCount,
+    ticketType,
     totalPrice,
   };
 }
@@ -129,7 +133,7 @@ function musashinokanExtractPrefixedValue(lines: string[], prefix: string): stri
   return value;
 }
 
-function musashinokanParseScreening(value: string): { start: Date } {
+function musashinokanParseScreening(value: string): { start: Date; end: Date } {
   const match = value.match(/^(\d{4})\/(\d{1,2})\/(\d{1,2})\s+(\d{1,2}):(\d{2})$/);
   if (!match) {
     throw new Error(`Invalid screening time: ${value}`);
@@ -143,20 +147,9 @@ function musashinokanParseScreening(value: string): { start: Date } {
     throw new Error(`Invalid screening time: ${value}`);
   }
 
-  return { start };
-}
+  const end = new Date(start.getTime() + MUSASHINOKAN_DEFAULT_SCREENING_MINUTES * 60 * 1000);
 
-function musashinokanParseTicketCount(value: string): number {
-  const match = value.match(/[\d,]+/);
-  if (!match) {
-    throw new Error(`Invalid ticket count: ${value}`);
-  }
-
-  const count = Number.parseInt(match[0].replace(/,/g, ""), 10);
-  if (!Number.isFinite(count)) {
-    throw new Error(`Invalid ticket count: ${value}`);
-  }
-  return count;
+  return { start, end };
 }
 
 function musashinokanParsePrice(value: string): number {

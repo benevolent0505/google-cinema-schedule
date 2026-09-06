@@ -19,26 +19,26 @@ const parseMusashinokanBody = (
 ).parseMusashinokanBody;
 
 const sampleBody = [
-  "①予約番号：1234567890",
-  "　QRコード：https://example.com",
-  "②2026/12/31 00:00",
+  "①予約番号：1234567",
+  "　QRコード：https://qrcode-url.test",
+  "②2026/01/02 03:45",
   "③タイトル",
-  "④ｽｸﾘｰﾝ２",
-  "⑤券種 1枚",
-  "　合計 2,000",
-  "⑥座席番号：Ａ－１",
+  "④ｽｸﾘｰﾝ１",
+  "⑤券種",
+  "　合計 0",
+  "⑥座席番号：Ｅ－２",
   "",
 ].join("\r\n");
 
 describe("parseMusashinokanBody", () => {
   it("parses a ticket confirmation email body", () => {
     expect(parseMusashinokanBody(sampleBody)).toEqual({
-      ticketNumber: "1234567890",
+      ticketNumber: "1234567",
       title: "タイトル",
-      startTime: new Date("2026-12-31T00:00:00+09:00"),
-      endTime: new Date("2026-12-31T00:00:00+09:00"),
-      theater: "ｽｸﾘｰﾝ２",
-      sheet: "Ａ－１",
+      startTime: new Date("2026-01-02T03:45:00+09:00"),
+      endTime: new Date("2026-01-02T05:45:00+09:00"),
+      theater: "ｽｸﾘｰﾝ１",
+      sheet: "Ｅ－２",
     });
   });
 
@@ -47,8 +47,45 @@ describe("parseMusashinokanBody", () => {
   });
 
   it("returns undefined when a required field is missing", () => {
-    const bodyWithoutSeats = sampleBody.replace("⑥座席番号：Ａ－１\r\n", "");
+    const bodyWithoutSeats = sampleBody.replace("⑥座席番号：Ｅ－２\r\n", "");
 
     expect(parseMusashinokanBody(bodyWithoutSeats)).toBeUndefined();
+  });
+
+  it("parses a full reservation email with surrounding boilerplate", () => {
+    const fullBody = [
+      "テスト太郎　様",
+      "",
+      "この度は、新宿武蔵野館のインターネットチケットをご利用いただき、誠にありがとうございます。",
+      "",
+      "お客様がご購入されましたチケットの情報は下記の通りです。",
+      "発券をせずに下記のQRコードをご提示いただくことでそのままご入場いただけます。",
+      "",
+      "①予約番号：1234567",
+      "　QRコード：https://qrcode-url.test",
+      "②2026/01/02 03:45",
+      "③タイトル",
+      "④ｽｸﾘｰﾝ１",
+      "⑤券種",
+      "　合計 0",
+      "⑥座席番号：Ｅ－２",
+      "",
+      "",
+      "※ご購入されたチケットの変更、キャンセル、払戻しは一切いたしかねます。",
+      "",
+      "お問い合わせはこちら",
+      "新宿武蔵野館",
+      "TEL：03-3354-5670",
+      "",
+    ].join("\r\n");
+
+    expect(parseMusashinokanBody(fullBody)).toEqual({
+      ticketNumber: "1234567",
+      title: "タイトル",
+      startTime: new Date("2026-01-02T03:45:00+09:00"),
+      endTime: new Date("2026-01-02T05:45:00+09:00"),
+      theater: "ｽｸﾘｰﾝ１",
+      sheet: "Ｅ－２",
+    });
   });
 });
