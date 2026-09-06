@@ -100,8 +100,12 @@ function runCinemaSchedule(searchStartDateTime: Date): void {
   const existingEvents = fetchExistingEvents(minStartTime, maxEndTime);
 
   const willRegisterTickets = tickets.filter((ticket) => {
+    // タイトルの部分一致ではなく、description に埋め込んだチケット番号で照合する。
+    // タイトルだけで見ると、同じ作品を別日にもう一度観た場合や、短いタイトルが
+    // 無関係な予定に一致してしまう場合に、登録すべきチケットを誤ってスキップして
+    // しまう。
     const isExist = existingEvents.some((event) => {
-      return event.getTitle().includes(ticket.title);
+      return event.getDescription().includes(buildTicketNumberMarker(ticket.ticketNumber));
     });
 
     if (isExist) {
@@ -158,7 +162,14 @@ function fetchTickets(sources: readonly TicketMailSource[], searchStartDateTime:
       debugLog(
         `fetchTickets: スレッド[${threadIndex}] メッセージ[${messageIndex}] 本文 >>>\n${body}\n<<<`,
       );
-      const ticket = parseTicketBody(body, sources);
+      const ticket = parseTicketBody(body, sources, (source, error) => {
+        // メール送信元の形式には一致したが、必須項目の欠落など解析に失敗した場合。
+        // メール形式の変更に気づけるよう、デバッグフラグに関係なく常にログへ残す。
+        const reason = error instanceof Error ? error.message : String(error);
+        Logger.log(
+          `fetchTickets: スレッド[${threadIndex}] メッセージ[${messageIndex}] 送信元=${source.mailAddresses.join(", ")} の解析に失敗しました: ${reason}`,
+        );
+      });
 
       if (ticket) {
         debugLog(
@@ -174,7 +185,33 @@ function fetchTickets(sources: readonly TicketMailSource[], searchStartDateTime:
   }
 
   debugLog(`fetchTickets: 取得したチケット数 = ${tickets.length}`);
-  return tickets;
+
+  // 予約確認メールの再送などで同じチケット番号が複数件取れることがあるため、
+  // 同一実行内での重複登録を避ける。
+  const uniqueTickets = dedupeTicketsByTicketNumber(tickets);
+  if (uniqueTickets.length !== tickets.length) {
+    debugLog(
+      `fetchTickets: チケット番号の重複を除去しました 重複除去前=${tickets.length} 重複除去後=${uniqueTickets.length}`,
+    );
+  }
+
+  return uniqueTickets;
+}
+
+function dedupeTicketsByTicketNumber(tickets: readonly Ticket[]): Ticket[] {
+  const seenTicketNumbers = new Set<string>();
+  const uniqueTickets: Ticket[] = [];
+
+  for (const ticket of tickets) {
+    if (seenTicketNumbers.has(ticket.ticketNumber)) {
+      continue;
+    }
+
+    seenTicketNumbers.add(ticket.ticketNumber);
+    uniqueTickets.push(ticket);
+  }
+
+  return uniqueTickets;
 }
 
 function buildTicketMailSearchCriteria(
@@ -217,7 +254,7 @@ function fetchExistingEvents(
 function registerEvent(ticket: Ticket): GoogleAppsScript.Calendar.CalendarEvent {
   const calendar = CalendarApp.getDefaultCalendar();
 
-  const description = `劇場: ${ticket.theater}\n座席: ${ticket.sheet}\nチケット番号: ${ticket.ticketNumber}\n検索用キーワード: ${calendarSearchKey}`;
+  const description = `劇場: ${ticket.theater}\n座席: ${ticket.sheet}\n${buildTicketNumberMarker(ticket.ticketNumber)}\n検索用キーワード: ${calendarSearchKey}`;
   const location = ticket.theater;
 
   const event = calendar.createEvent(ticket.title, ticket.startTime, ticket.endTime, {
@@ -228,7 +265,24 @@ function registerEvent(ticket: Ticket): GoogleAppsScript.Calendar.CalendarEvent 
   return event;
 }
 
+/**
+ * カレンダーイベントの description に埋め込む、登録済みチケットの照合用マーカー。
+ * `registerEvent` での登録時と `runCinemaSchedule` での重複判定の両方で使う。
+ */
+function buildTicketNumberMarker(ticketNumber: string): string {
+  return `チケット番号: ${ticketNumber}`;
+}
+
 // Register entry points on the global scope. Apps Script can already run a
 // top-level function by name; listing them here documents the public surface
 // and keeps linters from flagging them as "unused".
-Object.assign(globalThis, { buildTicketMailSearchCriteria, debugMain, main });
+//
+// `buildTicketMailSearchCriteria` and `dedupeTicketsByTicketNumber` are also
+// listed so their unit tests can reach them via globalThis, following the
+// pattern used for pure functions in other files.
+Object.assign(globalThis, {
+  buildTicketMailSearchCriteria,
+  dedupeTicketsByTicketNumber,
+  debugMain,
+  main,
+});

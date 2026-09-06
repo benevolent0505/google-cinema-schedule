@@ -58,4 +58,48 @@ describe("parseTicketBody", () => {
 
     expect(parseTicketBody("unrelated body", sources)).toBeUndefined();
   });
+
+  it("reports a throwing source via onParseError and still tries the remaining sources", () => {
+    const parseError = new Error("Missing required field: seats");
+    const throwingSource: TicketMailSource = {
+      mailAddresses: ["broken@example.com"],
+      parseBody: vi.fn(() => {
+        throw parseError;
+      }),
+    };
+    const matchingSource: TicketMailSource = {
+      mailAddresses: ["cinema@example.com"],
+      parseBody: vi.fn(() => ticket),
+    };
+    const onParseError = vi.fn();
+
+    const result = parseTicketBody("mail body", [throwingSource, matchingSource], onParseError);
+
+    expect(result).toEqual(ticket);
+    expect(onParseError).toHaveBeenCalledWith(throwingSource, parseError);
+  });
+
+  it("reports every throwing source and returns undefined when none parse successfully", () => {
+    const firstError = new Error("Missing required field: ticketNumber");
+    const secondError = new Error("Missing required field: seats");
+    const sources: TicketMailSource[] = [
+      {
+        mailAddresses: ["first@example.com"],
+        parseBody: () => {
+          throw firstError;
+        },
+      },
+      {
+        mailAddresses: ["second@example.com"],
+        parseBody: () => {
+          throw secondError;
+        },
+      },
+    ];
+    const onParseError = vi.fn();
+
+    expect(parseTicketBody("mail body", sources, onParseError)).toBeUndefined();
+    expect(onParseError).toHaveBeenNthCalledWith(1, sources[0], firstError);
+    expect(onParseError).toHaveBeenNthCalledWith(2, sources[1], secondError);
+  });
 });

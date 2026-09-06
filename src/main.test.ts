@@ -38,14 +38,16 @@ const sampleBody = [
   "",
 ].join("\r\n");
 
-const { buildTicketMailSearchCriteria, debugMain, main } = globalThis as typeof globalThis & {
-  buildTicketMailSearchCriteria: (
-    sources: readonly TicketMailSource[],
-    newerThreshold: Date,
-  ) => string;
-  debugMain: (searchStartDateTime?: string) => void;
-  main: () => void;
-};
+const { buildTicketMailSearchCriteria, dedupeTicketsByTicketNumber, debugMain, main } =
+  globalThis as typeof globalThis & {
+    buildTicketMailSearchCriteria: (
+      sources: readonly TicketMailSource[],
+      newerThreshold: Date,
+    ) => string;
+    dedupeTicketsByTicketNumber: (tickets: readonly Ticket[]) => Ticket[];
+    debugMain: (searchStartDateTime?: string) => void;
+    main: () => void;
+  };
 
 describe("main", () => {
   afterEach(() => {
@@ -68,7 +70,7 @@ describe("main", () => {
     expect(getDefaultCalendar).not.toHaveBeenCalled();
   });
 
-  it("logs Skip when the ticket is already registered", () => {
+  it("logs Skip when an event with the same ticket number already exists", () => {
     const getDate = vi.fn(() => new Date());
     const getPlainBody = vi.fn(() => sampleBody);
     const getMessages = vi.fn(() => [
@@ -81,7 +83,10 @@ describe("main", () => {
     ]);
     const search = vi.fn(() => [{ getMessages, getFirstMessageSubject: () => "予約確認" }]);
     const getTitle = vi.fn(() => "君の名は。");
-    const getEvents = vi.fn(() => [{ getTitle }]);
+    const getDescription = vi.fn(
+      () => "劇場: 劇場\n座席: A-10\nチケット番号: 12345\n検索用キーワード: 映画館チケット",
+    );
+    const getEvents = vi.fn(() => [{ getTitle, getDescription }]);
     const createEvent = vi.fn();
     const getDefaultCalendar = vi.fn(() => ({ createEvent, getEvents }));
     const log = vi.fn();
@@ -95,6 +100,75 @@ describe("main", () => {
     main();
 
     expect(log).toHaveBeenCalledWith("Skip: 君の名は。");
+    expect(createEvent).not.toHaveBeenCalled();
+  });
+
+  it("registers a ticket even when an existing event has the same title but a different ticket number", () => {
+    // 同じ作品を別日にもう一度観た場合、タイトルだけで既存判定すると
+    // 誤って登録がスキップされてしまう。チケット番号が異なれば登録される
+    // ことを確認する回帰テスト。
+    const getDate = vi.fn(() => new Date());
+    const getPlainBody = vi.fn(() => sampleBody);
+    const getMessages = vi.fn(() => [
+      {
+        getDate,
+        getPlainBody,
+        getFrom: () => "ticket@cinemacity.co.jp",
+        getSubject: () => "予約確認",
+      },
+    ]);
+    const search = vi.fn(() => [{ getMessages, getFirstMessageSubject: () => "予約確認" }]);
+    const getTitle = vi.fn(() => "君の名は。");
+    const getDescription = vi.fn(
+      () => "劇場: 劇場\n座席: A-1\nチケット番号: 99999\n検索用キーワード: 映画館チケット",
+    );
+    const getEvents = vi.fn(() => [{ getTitle, getDescription }]);
+    const createEvent = vi.fn(() => ({ getTitle: () => "君の名は。" }));
+    const getDefaultCalendar = vi.fn(() => ({ createEvent, getEvents }));
+    const log = vi.fn();
+    vi.stubGlobal("GmailApp", { search });
+    vi.stubGlobal("CalendarApp", { getDefaultCalendar });
+    vi.stubGlobal("Logger", { log });
+    vi.stubGlobal("PropertiesService", {
+      getScriptProperties: () => ({ getProperty: () => null }),
+    });
+
+    main();
+
+    expect(log).not.toHaveBeenCalledWith("Skip: 君の名は。");
+    expect(createEvent).toHaveBeenCalledOnce();
+  });
+
+  it("logs a warning and still registers other tickets when a mail matches a sender's format but fails to parse", () => {
+    // canParse は満たすが必須項目 (■座席) が欠けているメール。デバッグログの
+    // 有効・無効に関係なく警告が出て、他の正常なチケットの登録は継続される
+    // ことを確認する。
+    const brokenBody = sampleBody.replace("■座席\r\n[ A-10 ]\r\n", "");
+    const getMessages = vi.fn(() => [
+      {
+        getDate: () => new Date(),
+        getPlainBody: () => brokenBody,
+        getFrom: () => "ticket@cinemacity.co.jp",
+        getSubject: () => "予約確認",
+      },
+    ]);
+    const search = vi.fn(() => [{ getMessages, getFirstMessageSubject: () => "予約確認" }]);
+    const getEvents = vi.fn(() => []);
+    const createEvent = vi.fn();
+    const getDefaultCalendar = vi.fn(() => ({ createEvent, getEvents }));
+    const log = vi.fn();
+    vi.stubGlobal("GmailApp", { search });
+    vi.stubGlobal("CalendarApp", { getDefaultCalendar });
+    vi.stubGlobal("Logger", { log });
+    vi.stubGlobal("PropertiesService", {
+      getScriptProperties: () => ({ getProperty: () => null }),
+    });
+
+    main();
+
+    expect(log).toHaveBeenCalledWith(
+      expect.stringContaining("送信元=ticket@cinemacity.co.jp の解析に失敗しました"),
+    );
     expect(createEvent).not.toHaveBeenCalled();
   });
 
@@ -215,5 +289,31 @@ describe("buildTicketMailSearchCriteria", () => {
     expect(buildTicketMailSearchCriteria(sources, new Date("2025-03-01T00:00:00.000Z"))).toBe(
       "(from:first@example.com OR from:shared@example.com OR from:second@example.com) AND newer:2025-03-01",
     );
+  });
+});
+
+describe("dedupeTicketsByTicketNumber", () => {
+  const buildTicket = (overrides: Partial<Ticket>): Ticket => ({
+    ticketNumber: "1",
+    title: "テスト作品",
+    startTime: new Date("2025-03-01T10:00:00+09:00"),
+    endTime: new Date("2025-03-01T12:00:00+09:00"),
+    theater: "テスト劇場",
+    sheet: "A-1",
+    ...overrides,
+  });
+
+  it("keeps the first ticket and drops later ones with the same ticket number", () => {
+    // 予約確認メールの再送などで同じチケット番号のチケットが複数件
+    // 取得されても、同一実行内で1件に絞り込まれることを確認する。
+    const first = buildTicket({ ticketNumber: "12345", sheet: "A-1" });
+    const resend = buildTicket({ ticketNumber: "12345", sheet: "A-1" });
+    const other = buildTicket({ ticketNumber: "67890", sheet: "B-2" });
+
+    expect(dedupeTicketsByTicketNumber([first, resend, other])).toEqual([first, other]);
+  });
+
+  it("returns an empty array unchanged", () => {
+    expect(dedupeTicketsByTicketNumber([])).toEqual([]);
   });
 });

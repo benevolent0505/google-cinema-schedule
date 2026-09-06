@@ -50,26 +50,27 @@ const MUSASHINOKAN_LABELS = {
 /**
  * Parse a Gmail message body into a `Ticket`, or return `undefined` when the
  * body is not a recognizable 新宿武蔵野館 reservation email.
+ *
+ * When the body matches this cinema's format (`musashinokanCanParse`) but a
+ * required field is missing or malformed, this throws instead of returning
+ * `undefined` so the caller can tell "not this format" apart from "this
+ * format, but failed to parse" and report the latter.
  */
 function parseMusashinokanBody(body: string): Ticket | undefined {
   if (!musashinokanCanParse(body)) {
     return undefined;
   }
 
-  try {
-    const reservation = musashinokanParseReservation(body);
+  const reservation = musashinokanParseReservation(body);
 
-    return {
-      ticketNumber: reservation.ticketNumber,
-      title: reservation.movie.title,
-      startTime: reservation.screening.start,
-      endTime: reservation.screening.end ?? reservation.screening.start,
-      theater: reservation.theater.location,
-      sheet: reservation.seats.join(", "),
-    };
-  } catch {
-    return undefined;
-  }
+  return {
+    ticketNumber: reservation.ticketNumber,
+    title: reservation.movie.title,
+    startTime: reservation.screening.start,
+    endTime: reservation.screening.end ?? reservation.screening.start,
+    theater: reservation.theater.location,
+    sheet: reservation.seats.join(", "),
+  };
 }
 
 function musashinokanCanParse(raw: string): boolean {

@@ -22,13 +22,27 @@ type TicketMailSource = {
 
 /**
  * Try the registered parsers in order and return the first parsed ticket.
+ *
+ * A parser returns `undefined` when the body does not look like its own
+ * format, but may also throw when the body matches its format yet a
+ * required field is missing or malformed. That case is reported via
+ * `onParseError` (instead of being treated the same as "not this parser")
+ * and the remaining parsers are still tried.
  */
-function parseTicketBody(body: string, sources: readonly TicketMailSource[]): Ticket | undefined {
+function parseTicketBody(
+  body: string,
+  sources: readonly TicketMailSource[],
+  onParseError?: (source: TicketMailSource, error: unknown) => void,
+): Ticket | undefined {
   for (const source of sources) {
-    const ticket = source.parseBody(body);
+    try {
+      const ticket = source.parseBody(body);
 
-    if (ticket) {
-      return ticket;
+      if (ticket) {
+        return ticket;
+      }
+    } catch (error) {
+      onParseError?.(source, error);
     }
   }
 

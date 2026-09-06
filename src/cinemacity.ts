@@ -44,26 +44,27 @@ const CINEMACITY_LABELS = {
 /**
  * Parse a Gmail message body into a `Ticket`, or return `undefined` when the
  * body is not a recognizable 立川シネマシティ reservation email.
+ *
+ * When the body matches this cinema's format (`cinemaCityCanParse`) but a
+ * required field is missing or malformed, this throws instead of returning
+ * `undefined` so the caller can tell "not this format" apart from "this
+ * format, but failed to parse" and report the latter.
  */
 function parseCinemaCityBody(body: string): Ticket | undefined {
   if (!cinemaCityCanParse(body)) {
     return undefined;
   }
 
-  try {
-    const reservation = cinemaCityParseReservation(body);
+  const reservation = cinemaCityParseReservation(body);
 
-    return {
-      ticketNumber: reservation.ticketNumber,
-      title: reservation.movie.title,
-      startTime: reservation.screening.start,
-      endTime: reservation.screening.end ?? reservation.screening.start,
-      theater: reservation.theater.location,
-      sheet: reservation.seats.join(", "),
-    };
-  } catch {
-    return undefined;
-  }
+  return {
+    ticketNumber: reservation.ticketNumber,
+    title: reservation.movie.title,
+    startTime: reservation.screening.start,
+    endTime: reservation.screening.end ?? reservation.screening.start,
+    theater: reservation.theater.location,
+    sheet: reservation.seats.join(", "),
+  };
 }
 
 function cinemaCityCanParse(raw: string): boolean {

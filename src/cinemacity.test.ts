@@ -53,9 +53,12 @@ describe("parseCinemaCityBody", () => {
     expect(parseCinemaCityBody("just a normal email")).toBeUndefined();
   });
 
-  it("returns undefined when a required field is missing", () => {
+  it("throws when a required field is missing", () => {
+    // canParse は満たすが必須項目が欠けている場合、undefined ではなく例外を
+    // 投げる。呼び出し側 (ticket.ts) がこれを「送信元の形式には一致したが解析に
+    // 失敗した」ケースとして検知し、ログに残せるようにするため。
     const bodyWithoutSeats = sampleBody.replace("■座席\r\n[ A-10 ]\r\n", "");
 
-    expect(parseCinemaCityBody(bodyWithoutSeats)).toBeUndefined();
+    expect(() => parseCinemaCityBody(bodyWithoutSeats)).toThrow("Missing required field: ■座席");
   });
 });
