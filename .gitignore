@@ -142,3 +142,5 @@ vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vite/
 
+# clasp（scriptId は各自の Apps Script プロジェクトを指すため共有しない）
+.clasp.json
