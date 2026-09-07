@@ -15,7 +15,7 @@ const sampleBody = [
 ].join("\r\n");
 
 describe("parseMusashinokanBody", () => {
-  it("parses a ticket confirmation email body", () => {
+  it("予約確認メールの本文をチケットとして解析する", () => {
     expect(parseMusashinokanBody(sampleBody)).toEqual({
       ticketNumber: "1234567",
       title: "タイトル",
@@ -26,11 +26,11 @@ describe("parseMusashinokanBody", () => {
     });
   });
 
-  it("returns undefined for an unrelated body", () => {
+  it("無関係な本文には undefined を返す", () => {
     expect(parseMusashinokanBody("just a normal email")).toBeUndefined();
   });
 
-  it("throws when a required field's value is missing", () => {
+  it("形式は一致するのに必須項目の値が空の場合、解析失敗として検知できるよう例外を投げる", () => {
     const bodyWithoutSeatValue = sampleBody.replace("⑥座席番号：Ｅ－２", "⑥座席番号：");
 
     expect(() => parseMusashinokanBody(bodyWithoutSeatValue)).toThrow(
@@ -38,7 +38,7 @@ describe("parseMusashinokanBody", () => {
     );
   });
 
-  it("parses a full reservation email with surrounding boilerplate", () => {
+  it("定型文に囲まれた実際の予約メールを解析する", () => {
     const fullBody = [
       "テスト太郎　様",
       "",

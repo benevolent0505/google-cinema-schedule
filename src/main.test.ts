@@ -33,7 +33,7 @@ describe("main", () => {
     vi.unstubAllGlobals();
   });
 
-  it("does not access Calendar when no tickets are found", () => {
+  it("チケットが 1 件もない場合はカレンダーへアクセスしない", () => {
     const search = vi.fn(() => []);
     const getDefaultCalendar = vi.fn();
     vi.stubGlobal("GmailApp", { search });
@@ -48,7 +48,7 @@ describe("main", () => {
     expect(getDefaultCalendar).not.toHaveBeenCalled();
   });
 
-  it("logs Skip when an event with the same ticket number already exists", () => {
+  it("同じチケット番号の予定が既にある場合は Skip をログに出す", () => {
     const getDate = vi.fn(() => new Date());
     const getPlainBody = vi.fn(() => sampleBody);
     const getMessages = vi.fn(() => [
@@ -82,7 +82,7 @@ describe("main", () => {
     expect(createEvent).not.toHaveBeenCalled();
   });
 
-  it("registers a ticket even when an existing event has the same title but a different ticket number", () => {
+  it("同じタイトルの予定があってもチケット番号が違えば登録する（同じ作品を別日に観た場合に誤ってスキップしない）", () => {
     const getDate = vi.fn(() => new Date());
     const getPlainBody = vi.fn(() => sampleBody);
     const getMessages = vi.fn(() => [
@@ -116,7 +116,7 @@ describe("main", () => {
     expect(createEvent).toHaveBeenCalledOnce();
   });
 
-  it("logs an error and still registers other tickets when a mail matches a sender's format but fails to parse", () => {
+  it("送信元の形式に一致したのに解析に失敗した場合、エラーを出しつつ他のチケットの登録は続ける", () => {
     const brokenBody = sampleBody.replace("■座席\r\n[ A-10 ]\r\n", "");
     const getMessages = vi.fn(() => [
       {
@@ -148,7 +148,7 @@ describe("main", () => {
     expect(createEvent).not.toHaveBeenCalled();
   });
 
-  it("logs the Gmail message link so the original mail can be found", () => {
+  it("元メールをたどれるよう Gmail のメッセージリンクをログに出す", () => {
     const getMessages = vi.fn(() => [
       {
         getDate: () => new Date(),
@@ -180,7 +180,7 @@ describe("main", () => {
     );
   });
 
-  it("does not dump the mail body even when DEBUG_LOG_ENABLED is on", () => {
+  it("DEBUG_LOG_ENABLED が有効でもメール本文はログに出さない", () => {
     const getMessages = vi.fn(() => [
       {
         getDate: () => new Date(),
@@ -212,7 +212,7 @@ describe("main", () => {
     }
   });
 
-  it("emits fetchTickets debug logs when DEBUG_LOG_ENABLED is on", () => {
+  it("DEBUG_LOG_ENABLED が有効なとき fetchTickets のデバッグログを出す", () => {
     const search = vi.fn(() => []);
     const getDefaultCalendar = vi.fn();
     const log = vi.fn();
@@ -230,7 +230,7 @@ describe("main", () => {
     expect(log).toHaveBeenCalledWith(expect.stringContaining("fetchTickets: 検索条件"));
   });
 
-  it("suppresses fetchTickets debug logs when DEBUG_LOG_ENABLED is off", () => {
+  it("DEBUG_LOG_ENABLED が無効なとき fetchTickets のデバッグログを抑制する", () => {
     const search = vi.fn(() => []);
     const getDefaultCalendar = vi.fn();
     const log = vi.fn();
@@ -252,7 +252,7 @@ describe("debugMain", () => {
     vi.unstubAllGlobals();
   });
 
-  it("targets only mails received within the specified execution date's range", () => {
+  it("指定した実行日の対象範囲に受信したメールだけを対象にし、前後の境界のメールは除外する", () => {
     const beforeRangeGetPlainBody = vi.fn(() => "not a ticket");
     const inRangeGetPlainBody = vi.fn(() => sampleBody);
     const afterRangeGetPlainBody = vi.fn(() => "not a ticket");
@@ -298,7 +298,7 @@ describe("debugMain", () => {
     expect(afterRangeGetPlainBody).not.toHaveBeenCalled();
   });
 
-  it("logs the virtual execution date even when DEBUG_LOG_ENABLED is off", () => {
+  it("指定が効いているか確認できるよう、DEBUG_LOG_ENABLED が無効でも仮想実行日をログに出す", () => {
     const search = vi.fn(() => []);
     const info = vi.fn();
     vi.stubGlobal("GmailApp", { search });
@@ -314,7 +314,7 @@ describe("debugMain", () => {
     );
   });
 
-  it("reads the execution date from Script Properties when no argument is given", () => {
+  it("引数がない場合は Script Properties から実行日を読む", () => {
     const search = vi.fn(() => []);
     const getProperty = vi.fn((key: string) =>
       key === "DEBUG_EXECUTION_DATE" ? "2025-03-02" : null,
@@ -329,7 +329,7 @@ describe("debugMain", () => {
     expect(search).toHaveBeenCalledWith(expect.stringContaining("newer:2025-03-01"));
   });
 
-  it("prefers the argument over the Script Property", () => {
+  it("引数を Script Property より優先する", () => {
     const search = vi.fn(() => []);
     const getProperty = vi.fn((key: string) =>
       key === "DEBUG_EXECUTION_DATE" ? "2025-03-02" : null,
@@ -343,7 +343,7 @@ describe("debugMain", () => {
     expect(search).toHaveBeenCalledWith(expect.stringContaining("newer:2025-04-09"));
   });
 
-  it("rejects an execution date that is not in YYYY-MM-DD format", () => {
+  it("YYYY-MM-DD 形式でない実行日を拒否する", () => {
     vi.stubGlobal("PropertiesService", {
       getScriptProperties: () => ({ getProperty: () => null }),
     });
@@ -353,7 +353,7 @@ describe("debugMain", () => {
     );
   });
 
-  it("requires an execution date when no argument or Script Property is set", () => {
+  it("引数も Script Property もない場合は実行日を要求する", () => {
     const getProperty = vi.fn(() => null);
     const getScriptProperties = vi.fn(() => ({ getProperty }));
     vi.stubGlobal("PropertiesService", { getScriptProperties });
@@ -365,17 +365,17 @@ describe("debugMain", () => {
 });
 
 describe("parseExecutionDate", () => {
-  it("parses a date as midnight in the runtime timezone", () => {
+  it("実行環境のタイムゾーンにおけるその日の 0 時として解釈する", () => {
     expect(parseExecutionDate("2025-03-02")).toEqual(new Date("2025-03-02T00:00:00+09:00"));
   });
 
-  it("rejects a malformed date", () => {
+  it("形式違いの日付を拒否する", () => {
     expect(() => parseExecutionDate("2025-3-2")).toThrow(
       "DEBUG_EXECUTION_DATE には YYYY-MM-DD 形式で日付を指定してください: 2025-3-2",
     );
   });
 
-  it("rejects a date that does not exist", () => {
+  it("実在しない日付を拒否し、Date の繰り上げで黙って別の日として実行しない", () => {
     expect(() => parseExecutionDate("2025-02-30")).toThrow(
       "DEBUG_EXECUTION_DATE には実在する日付を指定してください: 2025-02-30",
     );
@@ -383,28 +383,28 @@ describe("parseExecutionDate", () => {
 });
 
 describe("resolveMailSearchRange", () => {
-  it("spans from the previous day's midnight to the next day's midnight", () => {
+  it("前日の 0 時から翌日の 0 時までを対象にする", () => {
     expect(resolveMailSearchRange(new Date("2025-03-02T13:45:00+09:00"))).toEqual({
       start: new Date("2025-03-01T00:00:00+09:00"),
       end: new Date("2025-03-03T00:00:00+09:00"),
     });
   });
 
-  it("crosses a month boundary", () => {
+  it("月をまたぐ実行日を扱う", () => {
     expect(resolveMailSearchRange(new Date("2025-03-01T00:00:00+09:00"))).toEqual({
       start: new Date("2025-02-28T00:00:00+09:00"),
       end: new Date("2025-03-02T00:00:00+09:00"),
     });
   });
 
-  it("crosses a year boundary", () => {
+  it("年をまたぐ実行日を扱う", () => {
     expect(resolveMailSearchRange(new Date("2025-01-01T00:00:00+09:00"))).toEqual({
       start: new Date("2024-12-31T00:00:00+09:00"),
       end: new Date("2025-01-02T00:00:00+09:00"),
     });
   });
 
-  it("handles the end of a month", () => {
+  it("月末の実行日を扱う", () => {
     expect(resolveMailSearchRange(new Date("2025-01-31T00:00:00+09:00"))).toEqual({
       start: new Date("2025-01-30T00:00:00+09:00"),
       end: new Date("2025-02-01T00:00:00+09:00"),
@@ -413,7 +413,7 @@ describe("resolveMailSearchRange", () => {
 });
 
 describe("buildTicketMailSearchCriteria", () => {
-  it("combines and deduplicates sender addresses from all sources", () => {
+  it("すべての source の送信元アドレスを重複なく結合する", () => {
     const parseBody = () => undefined;
     const sources: TicketMailSource[] = [
       {
@@ -443,7 +443,7 @@ describe("dedupeTicketsByTicketNumber", () => {
     ...overrides,
   });
 
-  it("keeps the first ticket and drops later ones with the same ticket number", () => {
+  it("同じチケット番号は最初の 1 件だけ残し、予約確認メールの再送で重複しても二重登録しない", () => {
     const first = buildTicket({ ticketNumber: "12345", sheet: "A-1" });
     const resend = buildTicket({ ticketNumber: "12345", sheet: "A-1" });
     const other = buildTicket({ ticketNumber: "67890", sheet: "B-2" });
@@ -451,7 +451,7 @@ describe("dedupeTicketsByTicketNumber", () => {
     expect(dedupeTicketsByTicketNumber([first, resend, other])).toEqual([first, other]);
   });
 
-  it("returns an empty array unchanged", () => {
+  it("空配列はそのまま返す", () => {
     expect(dedupeTicketsByTicketNumber([])).toEqual([]);
   });
 });

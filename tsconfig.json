@@ -1,5 +1,8 @@
 {
   "compilerOptions": {
+    // Apps Script は V8 ランタイムで動く。言語レベルは控えめに保ち、DOM 専用の
+    // lib は入れない（`console` など GAS のグローバルは @types/google-apps-script
+    // から来る）。
     "target": "ES2019",
     "module": "ESNext",
     "moduleResolution": "bundler",

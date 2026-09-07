@@ -1,3 +1,8 @@
+/**
+ * `console.log` / `console.info` / `console.warn` / `console.error` は GAS の V8
+ * ランタイム上でそれぞれ Cloud Logging の DEBUG / INFO / WARNING / ERROR severity
+ * に対応するため、レベルを表すプレフィックスを手で付ける必要はない。
+ */
 export type Logger = {
   debug: (message: string) => void;
   info: (message: string) => void;

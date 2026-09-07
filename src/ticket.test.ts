@@ -13,7 +13,7 @@ const ticket: Ticket = {
 };
 
 describe("parseTicketBody", () => {
-  it("calls only the parser registered to the sender address", () => {
+  it("送信元アドレスに登録されたパーサーだけを呼ぶ", () => {
     const otherParser = vi.fn(() => ticket);
     const matchingParser = vi.fn(() => ticket);
     const sources: TicketMailSource[] = [
@@ -26,7 +26,7 @@ describe("parseTicketBody", () => {
     expect(otherParser).not.toHaveBeenCalled();
   });
 
-  it("extracts the address from a display-name From header and ignores case", () => {
+  it("表示名付きの From ヘッダーからアドレスを取り出し、大文字小文字を無視する", () => {
     const parser = vi.fn(() => ticket);
     const sources: TicketMailSource[] = [
       { mailAddresses: ["Cinema@Example.com"], parseBody: parser },
@@ -36,7 +36,7 @@ describe("parseTicketBody", () => {
     expect(parser).toHaveBeenCalledWith("mail body");
   });
 
-  it("reports an unknown sender and calls no parser", () => {
+  it("未登録の送信元を報告し、どのパーサーも呼ばない", () => {
     const parser = vi.fn(() => ticket);
     const sources: TicketMailSource[] = [
       { mailAddresses: ["cinema@example.com"], parseBody: parser },
@@ -53,7 +53,7 @@ describe("parseTicketBody", () => {
     });
   });
 
-  it("reports an unrecognized body when the sender's parser returns undefined", () => {
+  it("送信元のパーサーが undefined を返した場合、本文が形式と一致しないと報告する", () => {
     const source: TicketMailSource = {
       mailAddresses: ["cinema@example.com"],
       parseBody: () => undefined,
@@ -66,7 +66,7 @@ describe("parseTicketBody", () => {
     expect(onParseError).toHaveBeenCalledWith({ reason: "unrecognized_body", source });
   });
 
-  it("reports a thrown parse error", () => {
+  it("パーサーが投げた例外を報告する", () => {
     const parseError = new Error("Missing required field: seats");
     const source: TicketMailSource = {
       mailAddresses: ["cinema@example.com"],

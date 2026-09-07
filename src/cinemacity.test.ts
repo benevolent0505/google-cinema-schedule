@@ -22,7 +22,7 @@ const sampleBody = [
 ].join("\r\n");
 
 describe("parseCinemaCityBody", () => {
-  it("parses a ticket confirmation email body", () => {
+  it("予約確認メールの本文をチケットとして解析する", () => {
     expect(parseCinemaCityBody(sampleBody)).toEqual({
       ticketNumber: "12345",
       title: "君の名は。",
@@ -33,11 +33,11 @@ describe("parseCinemaCityBody", () => {
     });
   });
 
-  it("returns undefined for an unrelated body", () => {
+  it("無関係な本文には undefined を返す", () => {
     expect(parseCinemaCityBody("just a normal email")).toBeUndefined();
   });
 
-  it("throws when a required field is missing", () => {
+  it("形式は一致するのに必須項目が欠けている場合、解析失敗として検知できるよう例外を投げる", () => {
     const bodyWithoutSeats = sampleBody.replace("■座席\r\n[ A-10 ]\r\n", "");
 
     expect(() => parseCinemaCityBody(bodyWithoutSeats)).toThrow("Missing required field: ■座席");

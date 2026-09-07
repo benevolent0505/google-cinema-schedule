@@ -37,6 +37,12 @@ function findTicketSourceByFromAddress(
   );
 }
 
+/**
+ * パーサーとの契約: 本文がその映画館の形式でなければ `undefined` を返し、形式には
+ * 一致したのに必須項目が欠けている場合は例外を投げる。前者は「別の映画館のメール」、
+ * 後者は「メール形式が変わった可能性」で、どちらも `onParseError` から区別して
+ * 報告する。
+ */
 export function parseTicketBody(
   body: string,
   fromAddress: string,

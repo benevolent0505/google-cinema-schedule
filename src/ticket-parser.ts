@@ -45,6 +45,8 @@ export function createTicketParser(config: {
   };
 }
 
+// チケットメールの本文は CRLF を含む。各パーサーの正規表現は LF に正規化された
+// 行を前提にしているので、行分割は必ずこの関数を通す。
 export function toLines(raw: string): string[] {
   return raw.replace(/\r\n?/g, "\n").split("\n");
 }

@@ -64,6 +64,8 @@ export function parseExecutionDate(value: string): Date {
   const day = Number(matched[3]);
   const parsed = new Date(year, month - 1, day, 0, 0, 0, 0);
 
+  // 2026-02-30 のような実在しない日付は Date が翌月へ繰り上げてしまうため、
+  // 組み立てた結果が指定どおりかどうかで弾く。
   if (
     parsed.getFullYear() !== year ||
     parsed.getMonth() !== month - 1 ||
@@ -75,6 +77,12 @@ export function parseExecutionDate(value: string): Date {
   return parsed;
 }
 
+/**
+ * 検索対象は前日の 0 時以上、翌日の 0 時未満。開始が前日の 0 時なのは前日中に届いた
+ * 予約確認メールを取りこぼさないため、終端が翌日の 0 時なのは実行日当日に届いた
+ * メールまでを含めるため。`main` も `debugMain` もこの関数だけを通るので、デバッグ
+ * 実行で確認した期間の決まり方が本番実行でもそのまま成り立つ。
+ */
 export function resolveMailSearchRange(executionDate: Date): MailSearchRange {
   const year = executionDate.getFullYear();
   const month = executionDate.getMonth();
@@ -86,6 +94,8 @@ export function resolveMailSearchRange(executionDate: Date): MailSearchRange {
   };
 }
 
+// `toISOString` は UTC 表示になり Apps Script のタイムゾーンとずれて読みにくいため、
+// ログ用の日時はローカルタイムのまま組み立てる。
 function formatDateTimeForLog(date: Date): string {
   const hour = String(date.getHours()).padStart(2, "0");
   const minute = String(date.getMinutes()).padStart(2, "0");
@@ -110,6 +120,9 @@ function runCinemaSchedule(searchRange: MailSearchRange, logger: Logger): void {
   const existingEvents = fetchExistingEvents(minStartTime, maxEndTime);
 
   const willRegisterTickets = tickets.filter((ticket) => {
+    // タイトルの部分一致ではなく、description に埋め込んだチケット番号で照合する。
+    // タイトルだけで見ると、同じ作品を別日にもう一度観た場合や、短いタイトルが
+    // 無関係な予定に一致した場合に、登録すべきチケットを誤ってスキップしてしまう。
     const isExist = existingEvents.some((event) => {
       return event.getDescription().includes(buildTicketNumberMarker(ticket.ticketNumber));
     });

@@ -3,6 +3,8 @@ import type { Reservation, Screening } from "./ticket-parser";
 
 const MUSASHINOKAN_THEATER_NAME = "新宿武蔵野館";
 
+// 新宿武蔵野館の予約メールには上映終了時刻が含まれないため、開始時刻に既定の
+// 上映時間を加算して終了時刻を補完する。
 const MUSASHINOKAN_DEFAULT_SCREENING_MINUTES = 120;
 
 const MUSASHINOKAN_LABELS = {
