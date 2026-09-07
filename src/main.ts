@@ -147,8 +147,9 @@ function fetchTickets(sources: readonly TicketMailSource[], searchStartDateTime:
 
     for (const [messageIndex, message] of messages.entries()) {
       const messageDate = message.getDate();
+      const fromAddress = message.getFrom();
       debugLog(
-        `fetchTickets: スレッド[${threadIndex}] メッセージ[${messageIndex}] from=${message.getFrom()} date=${messageDate.toISOString()} subject="${message.getSubject()}"`,
+        `fetchTickets: スレッド[${threadIndex}] メッセージ[${messageIndex}] from=${fromAddress} date=${messageDate.toISOString()} subject="${message.getSubject()}"`,
       );
 
       if (messageDate.getTime() < searchStartDateTime.getTime()) {
@@ -162,12 +163,26 @@ function fetchTickets(sources: readonly TicketMailSource[], searchStartDateTime:
       debugLog(
         `fetchTickets: スレッド[${threadIndex}] メッセージ[${messageIndex}] 本文 >>>\n${body}\n<<<`,
       );
-      const ticket = parseTicketBody(body, sources, (source, error) => {
-        // メール送信元の形式には一致したが、必須項目の欠落など解析に失敗した場合。
-        // メール形式の変更に気づけるよう、デバッグフラグに関係なく常にログへ残す。
-        const reason = error instanceof Error ? error.message : String(error);
+      // メール仕様の変更に気づけるよう、デバッグフラグに関係なく常にログへ残す。
+      const ticket = parseTicketBody(body, fromAddress, sources, (failure) => {
+        if (failure.reason === "unknown_sender") {
+          Logger.log(
+            `fetchTickets: スレッド[${threadIndex}] メッセージ[${messageIndex}] 送信元=${failure.fromAddress} は登録されていないためスキップします。`,
+          );
+          return;
+        }
+
+        if (failure.reason === "unrecognized_body") {
+          Logger.log(
+            `fetchTickets: スレッド[${threadIndex}] メッセージ[${messageIndex}] 送信元=${failure.source.mailAddresses.join(", ")} の本文が想定の形式と一致しませんでした。`,
+          );
+          return;
+        }
+
+        const reason =
+          failure.error instanceof Error ? failure.error.message : String(failure.error);
         Logger.log(
-          `fetchTickets: スレッド[${threadIndex}] メッセージ[${messageIndex}] 送信元=${source.mailAddresses.join(", ")} の解析に失敗しました: ${reason}`,
+          `fetchTickets: スレッド[${threadIndex}] メッセージ[${messageIndex}] 送信元=${failure.source.mailAddresses.join(", ")} の解析に失敗しました: ${reason}`,
         );
       });
 
@@ -176,10 +191,6 @@ function fetchTickets(sources: readonly TicketMailSource[], searchStartDateTime:
           `fetchTickets: スレッド[${threadIndex}] メッセージ[${messageIndex}] 解析成功 title="${ticket.title}" start=${ticket.startTime.toISOString()} end=${ticket.endTime.toISOString()}`,
         );
         tickets = [...tickets, ticket];
-      } else {
-        debugLog(
-          `fetchTickets: スレッド[${threadIndex}] メッセージ[${messageIndex}] は解析対象外でした。`,
-        );
       }
     }
   }

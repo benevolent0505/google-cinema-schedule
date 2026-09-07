@@ -16,9 +16,19 @@ type TicketMailSource = {
   parseBody: (body: string) => Ticket | undefined;
 };
 
+type TicketParseFailure =
+  | { reason: "unknown_sender"; fromAddress: string }
+  | { reason: "unrecognized_body"; source: TicketMailSource }
+  | { reason: "error"; source: TicketMailSource; error: unknown };
+
 const parseTicketBody = (
   globalThis as typeof globalThis & {
-    parseTicketBody: (body: string, sources: readonly TicketMailSource[]) => Ticket | undefined;
+    parseTicketBody: (
+      body: string,
+      fromAddress: string,
+      sources: readonly TicketMailSource[],
+      onParseError?: (failure: TicketParseFailure) => void,
+    ) => Ticket | undefined;
   }
 ).parseTicketBody;
 
@@ -32,74 +42,72 @@ const ticket: Ticket = {
 };
 
 describe("parseTicketBody", () => {
-  it("returns the first ticket parsed by a registered source", () => {
-    const firstParser = vi.fn(() => undefined);
-    const secondParser = vi.fn(() => ticket);
-    const unusedParser = vi.fn(() => undefined);
+  it("calls only the parser registered to the sender address", () => {
+    const otherParser = vi.fn(() => ticket);
+    const matchingParser = vi.fn(() => ticket);
     const sources: TicketMailSource[] = [
-      { mailAddresses: ["first@example.com"], parseBody: firstParser },
-      { mailAddresses: ["second@example.com"], parseBody: secondParser },
-      { mailAddresses: ["unused@example.com"], parseBody: unusedParser },
+      { mailAddresses: ["other@example.com"], parseBody: otherParser },
+      { mailAddresses: ["cinema@example.com"], parseBody: matchingParser },
     ];
 
-    expect(parseTicketBody("mail body", sources)).toEqual(ticket);
-    expect(firstParser).toHaveBeenCalledWith("mail body");
-    expect(secondParser).toHaveBeenCalledWith("mail body");
-    expect(unusedParser).not.toHaveBeenCalled();
+    expect(parseTicketBody("mail body", "cinema@example.com", sources)).toEqual(ticket);
+    expect(matchingParser).toHaveBeenCalledWith("mail body");
+    expect(otherParser).not.toHaveBeenCalled();
   });
 
-  it("returns undefined when none of the registered parsers match", () => {
+  it("extracts the address from a display-name From header and ignores case", () => {
+    const parser = vi.fn(() => ticket);
     const sources: TicketMailSource[] = [
-      {
-        mailAddresses: ["cinema@example.com"],
-        parseBody: () => undefined,
-      },
+      { mailAddresses: ["Cinema@Example.com"], parseBody: parser },
     ];
 
-    expect(parseTicketBody("unrelated body", sources)).toBeUndefined();
+    expect(parseTicketBody("mail body", "映画館 <cinema@example.com>", sources)).toEqual(ticket);
+    expect(parser).toHaveBeenCalledWith("mail body");
   });
 
-  it("reports a throwing source via onParseError and still tries the remaining sources", () => {
-    const parseError = new Error("Missing required field: seats");
-    const throwingSource: TicketMailSource = {
-      mailAddresses: ["broken@example.com"],
-      parseBody: vi.fn(() => {
-        throw parseError;
-      }),
-    };
-    const matchingSource: TicketMailSource = {
+  it("reports an unknown sender and calls no parser", () => {
+    const parser = vi.fn(() => ticket);
+    const sources: TicketMailSource[] = [
+      { mailAddresses: ["cinema@example.com"], parseBody: parser },
+    ];
+    const onParseError = vi.fn();
+
+    expect(
+      parseTicketBody("mail body", "unknown@example.com", sources, onParseError),
+    ).toBeUndefined();
+    expect(parser).not.toHaveBeenCalled();
+    expect(onParseError).toHaveBeenCalledWith({
+      reason: "unknown_sender",
+      fromAddress: "unknown@example.com",
+    });
+  });
+
+  it("reports an unrecognized body when the sender's parser returns undefined", () => {
+    const source: TicketMailSource = {
       mailAddresses: ["cinema@example.com"],
-      parseBody: vi.fn(() => ticket),
+      parseBody: () => undefined,
     };
     const onParseError = vi.fn();
 
-    const result = parseTicketBody("mail body", [throwingSource, matchingSource], onParseError);
-
-    expect(result).toEqual(ticket);
-    expect(onParseError).toHaveBeenCalledWith(throwingSource, parseError);
+    expect(
+      parseTicketBody("unrelated body", "cinema@example.com", [source], onParseError),
+    ).toBeUndefined();
+    expect(onParseError).toHaveBeenCalledWith({ reason: "unrecognized_body", source });
   });
 
-  it("reports every throwing source and returns undefined when none parse successfully", () => {
-    const firstError = new Error("Missing required field: ticketNumber");
-    const secondError = new Error("Missing required field: seats");
-    const sources: TicketMailSource[] = [
-      {
-        mailAddresses: ["first@example.com"],
-        parseBody: () => {
-          throw firstError;
-        },
+  it("reports a thrown parse error", () => {
+    const parseError = new Error("Missing required field: seats");
+    const source: TicketMailSource = {
+      mailAddresses: ["cinema@example.com"],
+      parseBody: () => {
+        throw parseError;
       },
-      {
-        mailAddresses: ["second@example.com"],
-        parseBody: () => {
-          throw secondError;
-        },
-      },
-    ];
+    };
     const onParseError = vi.fn();
 
-    expect(parseTicketBody("mail body", sources, onParseError)).toBeUndefined();
-    expect(onParseError).toHaveBeenNthCalledWith(1, sources[0], firstError);
-    expect(onParseError).toHaveBeenNthCalledWith(2, sources[1], secondError);
+    expect(
+      parseTicketBody("mail body", "cinema@example.com", [source], onParseError),
+    ).toBeUndefined();
+    expect(onParseError).toHaveBeenCalledWith({ reason: "error", source, error: parseError });
   });
 });

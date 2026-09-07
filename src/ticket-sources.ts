@@ -17,11 +17,4 @@ function getTicketMailSources(): TicketMailSource[] {
   ];
 }
 
-/**
- * Backward-compatible convenience parser using all registered sources.
- */
-function parseBody(body: string): Ticket | undefined {
-  return parseTicketBody(body, getTicketMailSources());
-}
-
-Object.assign(globalThis, { getTicketMailSources, parseBody });
+Object.assign(globalThis, { getTicketMailSources });

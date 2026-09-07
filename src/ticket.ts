@@ -20,33 +20,61 @@ type TicketMailSource = {
   parseBody: TicketParser;
 };
 
+type TicketParseFailure =
+  | { reason: "unknown_sender"; fromAddress: string }
+  | { reason: "unrecognized_body"; source: TicketMailSource }
+  | { reason: "error"; source: TicketMailSource; error: unknown };
+
+function normalizeMailAddress(from: string): string {
+  const match = from.match(/<([^<>]+)>/);
+  const address = match ? match[1] : from;
+
+  return address.trim().toLowerCase();
+}
+
+function findTicketSourceByFromAddress(
+  sources: readonly TicketMailSource[],
+  fromAddress: string,
+): TicketMailSource | undefined {
+  const normalized = normalizeMailAddress(fromAddress);
+
+  return sources.find((source) =>
+    source.mailAddresses.some((address) => address.toLowerCase() === normalized),
+  );
+}
+
 /**
- * Try the registered parsers in order and return the first parsed ticket.
- *
- * A parser returns `undefined` when the body does not look like its own
- * format, but may also throw when the body matches its format yet a
- * required field is missing or malformed. That case is reported via
- * `onParseError` (instead of being treated the same as "not this parser")
- * and the remaining parsers are still tried.
+ * The sender address determines the parser exclusively - no fallback to
+ * another parser once one is selected. A parser returning `undefined` and
+ * one throwing are both reported via `onParseError`, since either means
+ * this sender's mail no longer looks like what it used to.
  */
 function parseTicketBody(
   body: string,
+  fromAddress: string,
   sources: readonly TicketMailSource[],
-  onParseError?: (source: TicketMailSource, error: unknown) => void,
+  onParseError?: (failure: TicketParseFailure) => void,
 ): Ticket | undefined {
-  for (const source of sources) {
-    try {
-      const ticket = source.parseBody(body);
+  const source = findTicketSourceByFromAddress(sources, fromAddress);
 
-      if (ticket) {
-        return ticket;
-      }
-    } catch (error) {
-      onParseError?.(source, error);
-    }
+  if (!source) {
+    onParseError?.({ reason: "unknown_sender", fromAddress });
+    return undefined;
   }
 
-  return undefined;
+  try {
+    const ticket = source.parseBody(body);
+
+    if (!ticket) {
+      onParseError?.({ reason: "unrecognized_body", source });
+      return undefined;
+    }
+
+    return ticket;
+  } catch (error) {
+    onParseError?.({ reason: "error", source, error });
+    return undefined;
+  }
 }
 
 Object.assign(globalThis, { parseTicketBody });
