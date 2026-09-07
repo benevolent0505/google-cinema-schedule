@@ -4,32 +4,8 @@
  * The implementation is ported from the `theather-mail-parser` project
  * (`src/parsers/cinemacity-parser.ts`).
  */
-import type { Ticket } from "./ticket";
-
-type CinemaCityTheater = {
-  name: string;
-  location: string;
-};
-
-type CinemaCityMovie = {
-  title: string;
-};
-
-type CinemaCityScreening = {
-  start: Date;
-  end?: Date;
-};
-
-type CinemaCityReservation = {
-  theater: CinemaCityTheater;
-  movie: CinemaCityMovie;
-  screening: CinemaCityScreening;
-  ticketNumber: string;
-  phoneNumber?: string;
-  seats: string[];
-  ticketCount: number;
-  totalPrice: number;
-};
+import { createTicketParser, pad2, parsePrice, parseSeats, toLines } from "./ticket-parser";
+import type { Reservation, Screening } from "./ticket-parser";
 
 const CINEMACITY_THEATER_NAME = "立川シネマシティ";
 
@@ -39,7 +15,6 @@ const CINEMACITY_LABELS = {
   screeningTime: "■上映時間",
   theater: "■劇場",
   seats: "■座席",
-  ticketCount: "■枚数",
   totalPrice: "■合計金額",
 } as const;
 
@@ -52,22 +27,10 @@ const CINEMACITY_LABELS = {
  * `undefined` so the caller can tell "not this format" apart from "this
  * format, but failed to parse" and report the latter.
  */
-export function parseCinemaCityBody(body: string): Ticket | undefined {
-  if (!cinemaCityCanParse(body)) {
-    return undefined;
-  }
-
-  const reservation = cinemaCityParseReservation(body);
-
-  return {
-    ticketNumber: reservation.ticketNumber,
-    title: reservation.movie.title,
-    startTime: reservation.screening.start,
-    endTime: reservation.screening.end ?? reservation.screening.start,
-    theater: reservation.theater.location,
-    sheet: reservation.seats.join(", "),
-  };
-}
+export const parseCinemaCityBody = createTicketParser({
+  canParse: cinemaCityCanParse,
+  parseReservation: cinemaCityParseReservation,
+});
 
 function cinemaCityCanParse(raw: string): boolean {
   return (
@@ -78,24 +41,17 @@ function cinemaCityCanParse(raw: string): boolean {
   );
 }
 
-function cinemaCityParseReservation(raw: string): CinemaCityReservation {
-  const lines = cinemaCityToLines(raw);
+function cinemaCityParseReservation(raw: string): Reservation {
+  const lines = toLines(raw);
   const ticketNumber = cinemaCityExtractInlineValue(raw, CINEMACITY_LABELS.ticketNumber);
-  const phoneNumber = cinemaCityStripParenthetical(
-    cinemaCityExtractInlineValue(raw, CINEMACITY_LABELS.phoneNumber),
-  );
   const title = cinemaCityExtractTitle(lines);
   const screening = cinemaCityParseScreening(
     cinemaCityExtractValueAfterLabel(lines, CINEMACITY_LABELS.screeningTime),
   );
   const theaterLocation = cinemaCityExtractValueAfterLabel(lines, CINEMACITY_LABELS.theater);
-  const seats = cinemaCityParseSeats(
-    cinemaCityExtractValueAfterLabel(lines, CINEMACITY_LABELS.seats),
-  );
-  const ticketCount = cinemaCityParseTicketCount(
-    cinemaCityExtractValueAfterLabel(lines, CINEMACITY_LABELS.ticketCount),
-  );
-  const totalPrice = cinemaCityParsePrice(
+  const seatsValue = cinemaCityExtractValueAfterLabel(lines, CINEMACITY_LABELS.seats);
+  const seats = parseSeats(seatsValue.replace(/[[\]]/g, ""), /[、,\s]+/);
+  const totalPrice = parsePrice(
     cinemaCityExtractValueAfterLabel(lines, CINEMACITY_LABELS.totalPrice),
   );
 
@@ -109,15 +65,9 @@ function cinemaCityParseReservation(raw: string): CinemaCityReservation {
     },
     screening,
     ticketNumber,
-    phoneNumber,
     seats,
-    ticketCount,
     totalPrice,
   };
-}
-
-function cinemaCityToLines(raw: string): string[] {
-  return raw.replace(/\r\n?/g, "\n").split("\n");
 }
 
 function cinemaCityExtractInlineValue(raw: string, label: string): string {
@@ -162,7 +112,7 @@ function cinemaCityExtractTitle(lines: string[]): string {
   return title;
 }
 
-function cinemaCityParseScreening(value: string): { start: Date; end: Date } {
+function cinemaCityParseScreening(value: string): Screening {
   const match = value.match(
     /^(\d{4})年(\d{1,2})月(\d{1,2})日(?:\([^)]*\)|（[^）]*）)?\s+(\d{1,2}):(\d{2})\s*-\s*(\d{1,2}):(\d{2})$/,
   );
@@ -171,58 +121,15 @@ function cinemaCityParseScreening(value: string): { start: Date; end: Date } {
   }
 
   const [, year, month, day, startHour, startMinute, endHour, endMinute] = match;
-  const date = `${year}-${cinemaCityPad2(month)}-${cinemaCityPad2(day)}`;
-  const start = new Date(`${date}T${cinemaCityPad2(startHour)}:${startMinute}:00+09:00`);
-  const end = new Date(`${date}T${cinemaCityPad2(endHour)}:${endMinute}:00+09:00`);
+  const date = `${year}-${pad2(month)}-${pad2(day)}`;
+  const start = new Date(`${date}T${pad2(startHour)}:${startMinute}:00+09:00`);
+  const end = new Date(`${date}T${pad2(endHour)}:${endMinute}:00+09:00`);
 
   if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
     throw new Error(`Invalid screening time: ${value}`);
   }
 
   return { start, end };
-}
-
-function cinemaCityParseSeats(value: string): string[] {
-  const withoutBrackets = value.replace(/\[/g, "").replace(/\]/g, "").trim();
-  const seats = withoutBrackets
-    .split(/[、,\s]+/)
-    .map((seat) => seat.trim())
-    .filter((seat) => seat !== "");
-
-  if (seats.length === 0) {
-    throw new Error(`Invalid seats: ${value}`);
-  }
-
-  return seats;
-}
-
-function cinemaCityParseTicketCount(value: string): number {
-  const count = Number.parseInt(value.replace(/,/g, ""), 10);
-  if (!Number.isFinite(count)) {
-    throw new Error(`Invalid ticket count: ${value}`);
-  }
-  return count;
-}
-
-function cinemaCityParsePrice(value: string): number {
-  const match = value.match(/[\d,]+/);
-  if (!match) {
-    throw new Error(`Invalid price: ${value}`);
-  }
-
-  const price = Number.parseInt(match[0].replace(/,/g, ""), 10);
-  if (!Number.isFinite(price)) {
-    throw new Error(`Invalid price: ${value}`);
-  }
-  return price;
-}
-
-function cinemaCityStripParenthetical(value: string): string {
-  return value.replace(/（.*?）|\(.*?\)/g, "").trim();
-}
-
-function cinemaCityPad2(value: string): string {
-  return value.padStart(2, "0");
 }
 
 function cinemaCityEscapeRegExp(value: string): string {

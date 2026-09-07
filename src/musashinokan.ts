@@ -5,31 +5,8 @@
  * (`src/parsers/musashinokan-parser.ts`). Reservation emails are sent from
  * `reserve@musashino.cineticket.jp` with the subject `インターネットチケット購入`.
  */
-import type { Ticket } from "./ticket";
-
-type MusashinokanTheater = {
-  name: string;
-  location: string;
-};
-
-type MusashinokanMovie = {
-  title: string;
-};
-
-type MusashinokanScreening = {
-  start: Date;
-  end?: Date;
-};
-
-type MusashinokanReservation = {
-  theater: MusashinokanTheater;
-  movie: MusashinokanMovie;
-  screening: MusashinokanScreening;
-  ticketNumber: string;
-  seats: string[];
-  ticketType: string;
-  totalPrice: number;
-};
+import { createTicketParser, pad2, parsePrice, parseSeats, toLines } from "./ticket-parser";
+import type { Reservation, Screening } from "./ticket-parser";
 
 const MUSASHINOKAN_THEATER_NAME = "新宿武蔵野館";
 
@@ -44,7 +21,6 @@ const MUSASHINOKAN_LABELS = {
   screeningTime: "②",
   title: "③",
   theater: "④",
-  ticketType: "⑤",
   totalPrice: "合計",
   seats: "⑥座席番号：",
 } as const;
@@ -58,22 +34,10 @@ const MUSASHINOKAN_LABELS = {
  * `undefined` so the caller can tell "not this format" apart from "this
  * format, but failed to parse" and report the latter.
  */
-export function parseMusashinokanBody(body: string): Ticket | undefined {
-  if (!musashinokanCanParse(body)) {
-    return undefined;
-  }
-
-  const reservation = musashinokanParseReservation(body);
-
-  return {
-    ticketNumber: reservation.ticketNumber,
-    title: reservation.movie.title,
-    startTime: reservation.screening.start,
-    endTime: reservation.screening.end ?? reservation.screening.start,
-    theater: reservation.theater.location,
-    sheet: reservation.seats.join(", "),
-  };
-}
+export const parseMusashinokanBody = createTicketParser({
+  canParse: musashinokanCanParse,
+  parseReservation: musashinokanParseReservation,
+});
 
 function musashinokanCanParse(raw: string): boolean {
   return (
@@ -86,20 +50,20 @@ function musashinokanCanParse(raw: string): boolean {
   );
 }
 
-function musashinokanParseReservation(raw: string): MusashinokanReservation {
-  const lines = musashinokanToLines(raw);
+function musashinokanParseReservation(raw: string): Reservation {
+  const lines = toLines(raw);
   const ticketNumber = musashinokanExtractPrefixedValue(lines, MUSASHINOKAN_LABELS.ticketNumber);
   const title = musashinokanExtractPrefixedValue(lines, MUSASHINOKAN_LABELS.title);
   const theaterLocation = musashinokanExtractPrefixedValue(lines, MUSASHINOKAN_LABELS.theater);
   const screening = musashinokanParseScreening(
     musashinokanExtractPrefixedValue(lines, MUSASHINOKAN_LABELS.screeningTime),
   );
-  const ticketType = musashinokanExtractPrefixedValue(lines, MUSASHINOKAN_LABELS.ticketType);
-  const totalPrice = musashinokanParsePrice(
+  const totalPrice = parsePrice(
     musashinokanExtractPrefixedValue(lines, MUSASHINOKAN_LABELS.totalPrice),
   );
-  const seats = musashinokanParseSeats(
+  const seats = parseSeats(
     musashinokanExtractPrefixedValue(lines, MUSASHINOKAN_LABELS.seats),
+    /[、,／/\s]+/,
   );
 
   return {
@@ -113,13 +77,8 @@ function musashinokanParseReservation(raw: string): MusashinokanReservation {
     screening,
     ticketNumber,
     seats,
-    ticketType,
     totalPrice,
   };
-}
-
-function musashinokanToLines(raw: string): string[] {
-  return raw.replace(/\r\n?/g, "\n").split("\n");
 }
 
 function musashinokanExtractPrefixedValue(lines: string[], prefix: string): string {
@@ -136,16 +95,14 @@ function musashinokanExtractPrefixedValue(lines: string[], prefix: string): stri
   return value;
 }
 
-function musashinokanParseScreening(value: string): { start: Date; end: Date } {
+function musashinokanParseScreening(value: string): Screening {
   const match = value.match(/^(\d{4})\/(\d{1,2})\/(\d{1,2})\s+(\d{1,2}):(\d{2})$/);
   if (!match) {
     throw new Error(`Invalid screening time: ${value}`);
   }
 
   const [, year, month, day, hour, minute] = match;
-  const start = new Date(
-    `${year}-${musashinokanPad2(month)}-${musashinokanPad2(day)}T${musashinokanPad2(hour)}:${minute}:00+09:00`,
-  );
+  const start = new Date(`${year}-${pad2(month)}-${pad2(day)}T${pad2(hour)}:${minute}:00+09:00`);
   if (Number.isNaN(start.getTime())) {
     throw new Error(`Invalid screening time: ${value}`);
   }
@@ -153,34 +110,4 @@ function musashinokanParseScreening(value: string): { start: Date; end: Date } {
   const end = new Date(start.getTime() + MUSASHINOKAN_DEFAULT_SCREENING_MINUTES * 60 * 1000);
 
   return { start, end };
-}
-
-function musashinokanParsePrice(value: string): number {
-  const match = value.match(/[\d,]+/);
-  if (!match) {
-    throw new Error(`Invalid price: ${value}`);
-  }
-
-  const price = Number.parseInt(match[0].replace(/,/g, ""), 10);
-  if (!Number.isFinite(price)) {
-    throw new Error(`Invalid price: ${value}`);
-  }
-  return price;
-}
-
-function musashinokanParseSeats(value: string): string[] {
-  const seats = value
-    .split(/[、,／/\s]+/)
-    .map((seat) => seat.trim())
-    .filter((seat) => seat !== "");
-
-  if (seats.length === 0) {
-    throw new Error(`Invalid seats: ${value}`);
-  }
-
-  return seats;
-}
-
-function musashinokanPad2(value: string): string {
-  return value.padStart(2, "0");
 }
