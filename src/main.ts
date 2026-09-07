@@ -154,6 +154,8 @@ function fetchTickets(
     return [];
   }
 
+  // Gmail の検索クエリは日単位でしか絞れないため、ここでは開始日だけを渡して粗く
+  // 絞り込み、検索対象期間の厳密な判定はメッセージごとの日時比較で行う。
   const searchCriteria = buildTicketMailSearchCriteria(sources, searchRange.start);
   logger.debug(`fetchTickets: 検索条件 = ${searchCriteria}`);
 
