@@ -15,6 +15,8 @@
 import { getTicketMailSources } from "./ticket-sources";
 import { parseTicketBody } from "./ticket";
 import type { Ticket, TicketMailSource } from "./ticket";
+import { createLogger } from "./logger";
+import type { Logger } from "./logger";
 
 const calendarSearchKey = "映画館チケット";
 const legacyCalendarSearchKeys = ["シネマシティ"];
@@ -22,7 +24,8 @@ const debugMailSearchStartDateTimeProperty = "DEBUG_MAIL_SEARCH_START_DATETIME";
 const debugLogEnabledProperty = "DEBUG_LOG_ENABLED";
 
 /**
- * Script Properties の `DEBUG_LOG_ENABLED` が有効値のときだけデバッグログを出力する。
+ * Script Properties の `DEBUG_LOG_ENABLED` が有効値かどうかを返す。デバッグ
+ * レベルのログを出力するかどうかの閾値として、実行開始時に一度だけ読む。
  *
  * 有効値（大文字小文字は無視）: `true` / `1` / `yes` / `on`
  */
@@ -36,16 +39,9 @@ function isDebugLogEnabled(): boolean {
   return ["true", "1", "yes", "on"].includes(value.trim().toLowerCase());
 }
 
-/**
- * デバッグログを出力する。`DEBUG_LOG_ENABLED` が無効な場合は何もしない。
- */
-function debugLog(message: string): void {
-  if (isDebugLogEnabled()) {
-    Logger.log(message);
-  }
-}
-
 export function main(): void {
+  const logger = createLogger(isDebugLogEnabled());
+
   // 実行日の1日前からのメールを取得する
   const now = new Date(Date.now());
   const searchStartDateTime = new Date(
@@ -57,7 +53,7 @@ export function main(): void {
     0,
   );
 
-  runCinemaSchedule(searchStartDateTime);
+  runCinemaSchedule(searchStartDateTime, logger);
 }
 
 /**
@@ -67,6 +63,8 @@ export function main(): void {
  * 実行する場合は Script Properties の `DEBUG_MAIL_SEARCH_START_DATETIME` を使用する。
  */
 export function debugMain(searchStartDateTime?: string): void {
+  const logger = createLogger(isDebugLogEnabled());
+
   const specifiedDateTime =
     searchStartDateTime ??
     PropertiesService.getScriptProperties().getProperty(debugMailSearchStartDateTimeProperty);
@@ -83,12 +81,12 @@ export function debugMain(searchStartDateTime?: string): void {
     );
   }
 
-  runCinemaSchedule(parsedDateTime);
+  runCinemaSchedule(parsedDateTime, logger);
 }
 
-function runCinemaSchedule(searchStartDateTime: Date): void {
+function runCinemaSchedule(searchStartDateTime: Date, logger: Logger): void {
   // メールからチケット情報を取得する
-  const tickets = fetchTickets(getTicketMailSources(), searchStartDateTime);
+  const tickets = fetchTickets(getTicketMailSources(), searchStartDateTime, logger);
 
   // 対象のチケットがない場合、空配列に対する reduce を避けて終了する
   if (tickets.length === 0) {
@@ -115,7 +113,7 @@ function runCinemaSchedule(searchStartDateTime: Date): void {
     });
 
     if (isExist) {
-      Logger.log(`Skip: ${ticket.title}`);
+      logger.info(`Skip: ${ticket.title}`);
     }
 
     return !isExist;
@@ -124,76 +122,85 @@ function runCinemaSchedule(searchStartDateTime: Date): void {
   // 登録されていない場合はカレンダーに登録する;
   for (const ticket of willRegisterTickets) {
     const event = registerEvent(ticket);
-    Logger.log(`Registered: ${event.getTitle()}`);
+    logger.info(`Registered: ${event.getTitle()}`);
   }
+}
+
+/**
+ * メールを Gmail 上で開くための直リンクを組み立てる。デバッグログに本文を
+ * 出力する代わりに、これを載せて元メールをたどれるようにする。
+ */
+function buildGmailMessageLink(messageId: string): string {
+  return `https://mail.google.com/mail/u/0/#all/${messageId}`;
 }
 
 /**
  * チケット情報を取得する
  */
-function fetchTickets(sources: readonly TicketMailSource[], searchStartDateTime: Date): Ticket[] {
+function fetchTickets(
+  sources: readonly TicketMailSource[],
+  searchStartDateTime: Date,
+  logger: Logger,
+): Ticket[] {
   if (sources.length === 0) {
-    debugLog("fetchTickets: チケットメールの取得元が未設定のため終了します。");
+    logger.debug("fetchTickets: チケットメールの取得元が未設定のため終了します。");
     return [];
   }
 
   const searchCriteria = buildTicketMailSearchCriteria(sources, searchStartDateTime);
-  debugLog(`fetchTickets: 検索条件 = ${searchCriteria}`);
+  logger.debug(`fetchTickets: 検索条件 = ${searchCriteria}`);
 
   const threads = GmailApp.search(searchCriteria);
-  debugLog(`fetchTickets: 検索スレッド数 = ${threads.length}`);
+  logger.debug(`fetchTickets: 検索スレッド数 = ${threads.length}`);
 
   let tickets: Ticket[] = [];
 
   for (const [threadIndex, thread] of threads.entries()) {
     const messages = thread.getMessages();
-    debugLog(
+    logger.debug(
       `fetchTickets: スレッド[${threadIndex}] 件名="${thread.getFirstMessageSubject()}" メッセージ数=${messages.length}`,
     );
 
     for (const [messageIndex, message] of messages.entries()) {
       const messageDate = message.getDate();
       const fromAddress = message.getFrom();
-      debugLog(
-        `fetchTickets: スレッド[${threadIndex}] メッセージ[${messageIndex}] from=${fromAddress} date=${messageDate.toISOString()} subject="${message.getSubject()}"`,
+      const messageLink = buildGmailMessageLink(message.getId());
+      logger.debug(
+        `fetchTickets: スレッド[${threadIndex}] メッセージ[${messageIndex}] from=${fromAddress} date=${messageDate.toISOString()} subject="${message.getSubject()}" link=${messageLink}`,
       );
 
       if (messageDate.getTime() < searchStartDateTime.getTime()) {
-        debugLog(
+        logger.debug(
           `fetchTickets: スレッド[${threadIndex}] メッセージ[${messageIndex}] は検索開始日時より前のためスキップします。`,
         );
         continue;
       }
 
       const body = message.getPlainBody();
-      debugLog(
-        `fetchTickets: スレッド[${threadIndex}] メッセージ[${messageIndex}] 本文 >>>\n${body}\n<<<`,
-      );
       // メール仕様の変更に気づけるよう、デバッグフラグに関係なく常にログへ残す。
       const ticket = parseTicketBody(body, fromAddress, sources, (failure) => {
         if (failure.reason === "unknown_sender") {
-          Logger.log(
-            `fetchTickets: スレッド[${threadIndex}] メッセージ[${messageIndex}] 送信元=${failure.fromAddress} は登録されていないためスキップします。`,
+          logger.warn(
+            `fetchTickets: スレッド[${threadIndex}] メッセージ[${messageIndex}] 送信元=${failure.fromAddress} は登録されていないためスキップします。 link=${messageLink}`,
           );
           return;
         }
 
         if (failure.reason === "unrecognized_body") {
-          Logger.log(
-            `fetchTickets: スレッド[${threadIndex}] メッセージ[${messageIndex}] 送信元=${failure.source.mailAddresses.join(", ")} の本文が想定の形式と一致しませんでした。`,
+          logger.warn(
+            `fetchTickets: スレッド[${threadIndex}] メッセージ[${messageIndex}] 送信元=${failure.source.mailAddresses.join(", ")} の本文が想定の形式と一致しませんでした。 link=${messageLink}`,
           );
           return;
         }
 
-        const reason =
-          failure.error instanceof Error ? failure.error.message : String(failure.error);
-        Logger.log(
-          `fetchTickets: スレッド[${threadIndex}] メッセージ[${messageIndex}] 送信元=${failure.source.mailAddresses.join(", ")} の解析に失敗しました: ${reason}`,
+        logger.error(
+          `fetchTickets: スレッド[${threadIndex}] メッセージ[${messageIndex}] 送信元=${failure.source.mailAddresses.join(", ")} の解析に失敗しました。 link=${messageLink}`,
+          failure.error,
         );
       });
 
       if (ticket) {
-        debugLog(
+        logger.debug(
           `fetchTickets: スレッド[${threadIndex}] メッセージ[${messageIndex}] 解析成功 title="${ticket.title}" start=${ticket.startTime.toISOString()} end=${ticket.endTime.toISOString()}`,
         );
         tickets = [...tickets, ticket];
@@ -201,13 +208,13 @@ function fetchTickets(sources: readonly TicketMailSource[], searchStartDateTime:
     }
   }
 
-  debugLog(`fetchTickets: 取得したチケット数 = ${tickets.length}`);
+  logger.debug(`fetchTickets: 取得したチケット数 = ${tickets.length}`);
 
   // 予約確認メールの再送などで同じチケット番号が複数件取れることがあるため、
   // 同一実行内での重複登録を避ける。
   const uniqueTickets = dedupeTicketsByTicketNumber(tickets);
   if (uniqueTickets.length !== tickets.length) {
-    debugLog(
+    logger.debug(
       `fetchTickets: チケット番号の重複を除去しました 重複除去前=${tickets.length} 重複除去後=${uniqueTickets.length}`,
     );
   }

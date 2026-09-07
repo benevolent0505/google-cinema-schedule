@@ -36,7 +36,6 @@ describe("main", () => {
     const getDefaultCalendar = vi.fn();
     vi.stubGlobal("GmailApp", { search });
     vi.stubGlobal("CalendarApp", { getDefaultCalendar });
-    vi.stubGlobal("Logger", { log: vi.fn() });
     vi.stubGlobal("PropertiesService", {
       getScriptProperties: () => ({ getProperty: () => null }),
     });
@@ -56,6 +55,7 @@ describe("main", () => {
         getPlainBody,
         getFrom: () => "ticket@cinemacity.co.jp",
         getSubject: () => "予約確認",
+        getId: () => "message-1",
       },
     ]);
     const search = vi.fn(() => [{ getMessages, getFirstMessageSubject: () => "予約確認" }]);
@@ -66,17 +66,17 @@ describe("main", () => {
     const getEvents = vi.fn(() => [{ getTitle, getDescription }]);
     const createEvent = vi.fn();
     const getDefaultCalendar = vi.fn(() => ({ createEvent, getEvents }));
-    const log = vi.fn();
+    const info = vi.fn();
     vi.stubGlobal("GmailApp", { search });
     vi.stubGlobal("CalendarApp", { getDefaultCalendar });
-    vi.stubGlobal("Logger", { log });
+    vi.stubGlobal("console", { ...console, info });
     vi.stubGlobal("PropertiesService", {
       getScriptProperties: () => ({ getProperty: () => null }),
     });
 
     main();
 
-    expect(log).toHaveBeenCalledWith("Skip: 君の名は。");
+    expect(info).toHaveBeenCalledWith("Skip: 君の名は。");
     expect(createEvent).not.toHaveBeenCalled();
   });
 
@@ -92,6 +92,7 @@ describe("main", () => {
         getPlainBody,
         getFrom: () => "ticket@cinemacity.co.jp",
         getSubject: () => "予約確認",
+        getId: () => "message-1",
       },
     ]);
     const search = vi.fn(() => [{ getMessages, getFirstMessageSubject: () => "予約確認" }]);
@@ -102,23 +103,23 @@ describe("main", () => {
     const getEvents = vi.fn(() => [{ getTitle, getDescription }]);
     const createEvent = vi.fn(() => ({ getTitle: () => "君の名は。" }));
     const getDefaultCalendar = vi.fn(() => ({ createEvent, getEvents }));
-    const log = vi.fn();
+    const info = vi.fn();
     vi.stubGlobal("GmailApp", { search });
     vi.stubGlobal("CalendarApp", { getDefaultCalendar });
-    vi.stubGlobal("Logger", { log });
+    vi.stubGlobal("console", { ...console, info });
     vi.stubGlobal("PropertiesService", {
       getScriptProperties: () => ({ getProperty: () => null }),
     });
 
     main();
 
-    expect(log).not.toHaveBeenCalledWith("Skip: 君の名は。");
+    expect(info).not.toHaveBeenCalledWith("Skip: 君の名は。");
     expect(createEvent).toHaveBeenCalledOnce();
   });
 
-  it("logs a warning and still registers other tickets when a mail matches a sender's format but fails to parse", () => {
+  it("logs an error and still registers other tickets when a mail matches a sender's format but fails to parse", () => {
     // canParse は満たすが必須項目 (■座席) が欠けているメール。デバッグログの
-    // 有効・無効に関係なく警告が出て、他の正常なチケットの登録は継続される
+    // 有効・無効に関係なくエラーが出て、他の正常なチケットの登録は継続される
     // ことを確認する。
     const brokenBody = sampleBody.replace("■座席\r\n[ A-10 ]\r\n", "");
     const getMessages = vi.fn(() => [
@@ -127,26 +128,92 @@ describe("main", () => {
         getPlainBody: () => brokenBody,
         getFrom: () => "ticket@cinemacity.co.jp",
         getSubject: () => "予約確認",
+        getId: () => "message-1",
       },
     ]);
     const search = vi.fn(() => [{ getMessages, getFirstMessageSubject: () => "予約確認" }]);
     const getEvents = vi.fn(() => []);
     const createEvent = vi.fn();
     const getDefaultCalendar = vi.fn(() => ({ createEvent, getEvents }));
-    const log = vi.fn();
+    const error = vi.fn();
     vi.stubGlobal("GmailApp", { search });
     vi.stubGlobal("CalendarApp", { getDefaultCalendar });
-    vi.stubGlobal("Logger", { log });
+    vi.stubGlobal("console", { ...console, error });
     vi.stubGlobal("PropertiesService", {
       getScriptProperties: () => ({ getProperty: () => null }),
     });
 
     main();
 
-    expect(log).toHaveBeenCalledWith(
+    expect(error).toHaveBeenCalledWith(
       expect.stringContaining("送信元=ticket@cinemacity.co.jp の解析に失敗しました"),
+      expect.anything(),
     );
     expect(createEvent).not.toHaveBeenCalled();
+  });
+
+  it("logs the Gmail message link so the original mail can be found", () => {
+    const getMessages = vi.fn(() => [
+      {
+        getDate: () => new Date(),
+        getPlainBody: () => sampleBody,
+        getFrom: () => "ticket@cinemacity.co.jp",
+        getSubject: () => "予約確認",
+        getId: () => "message-1",
+      },
+    ]);
+    const search = vi.fn(() => [{ getMessages, getFirstMessageSubject: () => "予約確認" }]);
+    const getDefaultCalendar = vi.fn(() => ({
+      createEvent: vi.fn(() => ({ getTitle: () => "君の名は。" })),
+      getEvents: vi.fn(() => []),
+    }));
+    const log = vi.fn();
+    vi.stubGlobal("GmailApp", { search });
+    vi.stubGlobal("CalendarApp", { getDefaultCalendar });
+    vi.stubGlobal("console", { ...console, log });
+    vi.stubGlobal("PropertiesService", {
+      getScriptProperties: () => ({
+        getProperty: (key: string) => (key === "DEBUG_LOG_ENABLED" ? "true" : null),
+      }),
+    });
+
+    main();
+
+    expect(log).toHaveBeenCalledWith(
+      expect.stringContaining("link=https://mail.google.com/mail/u/0/#all/message-1"),
+    );
+  });
+
+  it("does not dump the mail body even when DEBUG_LOG_ENABLED is on", () => {
+    const getMessages = vi.fn(() => [
+      {
+        getDate: () => new Date(),
+        getPlainBody: () => sampleBody,
+        getFrom: () => "ticket@cinemacity.co.jp",
+        getSubject: () => "予約確認",
+        getId: () => "message-1",
+      },
+    ]);
+    const search = vi.fn(() => [{ getMessages, getFirstMessageSubject: () => "予約確認" }]);
+    const getDefaultCalendar = vi.fn(() => ({
+      createEvent: vi.fn(() => ({ getTitle: () => "君の名は。" })),
+      getEvents: vi.fn(() => []),
+    }));
+    const log = vi.fn();
+    vi.stubGlobal("GmailApp", { search });
+    vi.stubGlobal("CalendarApp", { getDefaultCalendar });
+    vi.stubGlobal("console", { ...console, log });
+    vi.stubGlobal("PropertiesService", {
+      getScriptProperties: () => ({
+        getProperty: (key: string) => (key === "DEBUG_LOG_ENABLED" ? "true" : null),
+      }),
+    });
+
+    main();
+
+    for (const call of log.mock.calls) {
+      expect(String(call[0])).not.toContain("09012345678");
+    }
   });
 
   it("emits fetchTickets debug logs when DEBUG_LOG_ENABLED is on", () => {
@@ -155,7 +222,7 @@ describe("main", () => {
     const log = vi.fn();
     vi.stubGlobal("GmailApp", { search });
     vi.stubGlobal("CalendarApp", { getDefaultCalendar });
-    vi.stubGlobal("Logger", { log });
+    vi.stubGlobal("console", { ...console, log });
     vi.stubGlobal("PropertiesService", {
       getScriptProperties: () => ({
         getProperty: (key: string) => (key === "DEBUG_LOG_ENABLED" ? "true" : null),
@@ -173,7 +240,7 @@ describe("main", () => {
     const log = vi.fn();
     vi.stubGlobal("GmailApp", { search });
     vi.stubGlobal("CalendarApp", { getDefaultCalendar });
-    vi.stubGlobal("Logger", { log });
+    vi.stubGlobal("console", { ...console, log });
     vi.stubGlobal("PropertiesService", {
       getScriptProperties: () => ({ getProperty: () => null }),
     });
@@ -194,19 +261,20 @@ describe("debugMain", () => {
         getPlainBody: beforeThresholdGetPlainBody,
         getFrom: () => "ticket@cinemacity.co.jp",
         getSubject: () => "予約確認",
+        getId: () => "message-1",
       },
       {
         getDate: () => new Date("2025-03-01T10:00:00+09:00"),
         getPlainBody: afterThresholdGetPlainBody,
         getFrom: () => "ticket@cinemacity.co.jp",
         getSubject: () => "予約確認",
+        getId: () => "message-2",
       },
     ]);
     const search = vi.fn(() => [{ getMessages, getFirstMessageSubject: () => "予約確認" }]);
     const getDefaultCalendar = vi.fn();
     vi.stubGlobal("GmailApp", { search });
     vi.stubGlobal("CalendarApp", { getDefaultCalendar });
-    vi.stubGlobal("Logger", { log: vi.fn() });
     vi.stubGlobal("PropertiesService", {
       getScriptProperties: () => ({ getProperty: () => null }),
     });

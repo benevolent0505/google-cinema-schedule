@@ -97,6 +97,18 @@ Apps Script エディタから実行する場合は、プロジェクトの Scri
 | ---------------------------------- | --------------------------- |
 | `DEBUG_MAIL_SEARCH_START_DATETIME` | `2026-09-05T10:00:00+09:00` |
 
+### ログ
+
+ログは `console.log` / `console.info` / `console.warn` / `console.error` を使い分けており、
+GAS の V8 ランタイム上でそれぞれ Cloud Logging の DEBUG / INFO / WARNING / ERROR severity に
+対応します。`Skip:` / `Registered:` のような実行結果のサマリや、送信元不明・解析失敗の
+警告・エラーは常に出力されます。検索条件やメッセージごとの詳細なトレースは、Script
+Properties の `DEBUG_LOG_ENABLED` に `true` / `1` / `yes` / `on`（大文字小文字は無視）の
+いずれかを設定した場合のみ出力されます。
+
+個人情報を含むメール本文はログに出力しません。代わりに `message.getId()` から組み立てた
+Gmail への直リンクをログへ残しているので、必要であれば元メールをたどれます。
+
 ## エントリーポイントの追加方法
 
 Apps Script はすべてのファイルで **1 つのグローバルスコープ** を共有し、ES Modules
