@@ -36,8 +36,8 @@ function main() {
   return ${entryPointsGlobalName}.main();
 }
 
-function debugMain(searchStartDateTime) {
-  return ${entryPointsGlobalName}.debugMain(searchStartDateTime);
+function debugMain(executionDate) {
+  return ${entryPointsGlobalName}.debugMain(executionDate);
 }
 `,
   },

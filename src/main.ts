@@ -20,8 +20,16 @@ import type { Logger } from "./logger";
 
 const calendarSearchKey = "映画館チケット";
 const legacyCalendarSearchKeys = ["シネマシティ"];
-const debugMailSearchStartDateTimeProperty = "DEBUG_MAIL_SEARCH_START_DATETIME";
+const debugExecutionDateProperty = "DEBUG_EXECUTION_DATE";
 const debugLogEnabledProperty = "DEBUG_LOG_ENABLED";
+
+/**
+ * メールの検索対象期間。`start` 以上 `end` 未満の半開区間として扱う。
+ */
+export type MailSearchRange = {
+  start: Date;
+  end: Date;
+};
 
 /**
  * Script Properties の `DEBUG_LOG_ENABLED` が有効値かどうかを返す。デバッグ
@@ -42,51 +50,113 @@ function isDebugLogEnabled(): boolean {
 export function main(): void {
   const logger = createLogger(isDebugLogEnabled());
 
-  // 実行日の1日前からのメールを取得する
-  const now = new Date(Date.now());
-  const searchStartDateTime = new Date(
-    now.getFullYear(),
-    now.getMonth(),
-    now.getDate() - 1,
-    0,
-    0,
-    0,
-  );
-
-  runCinemaSchedule(searchStartDateTime, logger);
+  runCinemaSchedule(resolveMailSearchRange(new Date(Date.now())), logger);
 }
 
 /**
- * 指定した日時以降のメールを対象に実行するデバッグ用エントリーポイント。
+ * 実行日を指定して実行するデバッグ用エントリーポイント。
  *
- * `clasp run` から日時を引数で渡せるほか、Apps Script エディタから引数なしで
- * 実行する場合は Script Properties の `DEBUG_MAIL_SEARCH_START_DATETIME` を使用する。
+ * 指定した日に `main` を実行したのと同じ検索対象期間で動くため、期間の導出
+ * 自体も含めて挙動を再現できる。
+ *
+ * `clasp run` からは実行日を引数で渡せるほか、Apps Script エディタから引数なしで
+ * 実行する場合は Script Properties の `DEBUG_EXECUTION_DATE` を使用する。どちらも
+ * `YYYY-MM-DD` 形式で、Apps Script のタイムゾーン（`Asia/Tokyo`）の日付として
+ * 解釈する。
  */
-export function debugMain(searchStartDateTime?: string): void {
+export function debugMain(executionDate?: string): void {
   const logger = createLogger(isDebugLogEnabled());
 
-  const specifiedDateTime =
-    searchStartDateTime ??
-    PropertiesService.getScriptProperties().getProperty(debugMailSearchStartDateTimeProperty);
+  const specifiedDate =
+    executionDate ??
+    PropertiesService.getScriptProperties().getProperty(debugExecutionDateProperty);
 
-  if (!specifiedDateTime) {
-    throw new Error(`${debugMailSearchStartDateTimeProperty} に検索開始日時を指定してください。`);
+  if (!specifiedDate) {
+    throw new Error(`${debugExecutionDateProperty} に実行日を YYYY-MM-DD 形式で指定してください。`);
   }
 
-  const parsedDateTime = new Date(specifiedDateTime);
+  const searchRange = resolveMailSearchRange(parseExecutionDate(specifiedDate));
 
-  if (Number.isNaN(parsedDateTime.getTime())) {
+  // 指定した実行日が効いているかどうかは実行ログからしか判断できないため、
+  // DEBUG_LOG_ENABLED の設定に関係なく常に出力する。
+  logger.info(
+    `debugMain: 仮想実行日=${specifiedDate} 対象範囲=${formatDateTimeForLog(searchRange.start)} 以上 ${formatDateTimeForLog(searchRange.end)} 未満`,
+  );
+
+  runCinemaSchedule(searchRange, logger);
+}
+
+/**
+ * `YYYY-MM-DD` 形式の文字列を、実行環境のタイムゾーン（Apps Script では
+ * `Asia/Tokyo`）におけるその日の 0 時として解釈する。
+ *
+ * 形式違いと実在しない日付は、黙って別の日として実行してしまわないよう例外に
+ * する。
+ */
+export function parseExecutionDate(value: string): Date {
+  const matched = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+
+  if (!matched) {
     throw new Error(
-      `${debugMailSearchStartDateTimeProperty} には有効な日時を指定してください: ${specifiedDateTime}`,
+      `${debugExecutionDateProperty} には YYYY-MM-DD 形式で日付を指定してください: ${value}`,
     );
   }
 
-  runCinemaSchedule(parsedDateTime, logger);
+  const year = Number(matched[1]);
+  const month = Number(matched[2]);
+  const day = Number(matched[3]);
+  const parsed = new Date(year, month - 1, day, 0, 0, 0, 0);
+
+  // 2026-02-30 のような実在しない日付は Date が翌月へ繰り上げてしまうため、
+  // 組み立てた結果が指定どおりかどうかで弾く。
+  if (
+    parsed.getFullYear() !== year ||
+    parsed.getMonth() !== month - 1 ||
+    parsed.getDate() !== day
+  ) {
+    throw new Error(`${debugExecutionDateProperty} には実在する日付を指定してください: ${value}`);
+  }
+
+  return parsed;
 }
 
-function runCinemaSchedule(searchStartDateTime: Date, logger: Logger): void {
+/**
+ * 実行日からメールの検索対象期間を導出する。
+ *
+ * 前日の 0 時以上、翌日の 0 時未満。開始が前日の 0 時なのは、前日中に届いた
+ * 予約確認メールを取りこぼさないため。終端を翌日の 0 時に置くのは、実行日
+ * 当日に届いたメールまでを対象にするため。
+ *
+ * `main` は実際の現在日時を、`debugMain` は指定された実行日を渡す。どちらも
+ * この関数だけを通るので、デバッグ実行で確認した期間の決まり方が本番実行でも
+ * そのまま成り立つ。現在日時を渡す `main` では終端が未来になるため、実質的な
+ * 上限としては働かない（受信済みメールの日時が未来になることはない）。
+ */
+export function resolveMailSearchRange(executionDate: Date): MailSearchRange {
+  const year = executionDate.getFullYear();
+  const month = executionDate.getMonth();
+  const day = executionDate.getDate();
+
+  return {
+    start: new Date(year, month, day - 1, 0, 0, 0, 0),
+    end: new Date(year, month, day + 1, 0, 0, 0, 0),
+  };
+}
+
+/**
+ * ログに載せる日時の整形。`toISOString` は UTC 表示になり Apps Script の
+ * タイムゾーンとずれて読みにくいため、ローカルタイムのまま組み立てる。
+ */
+function formatDateTimeForLog(date: Date): string {
+  const hour = String(date.getHours()).padStart(2, "0");
+  const minute = String(date.getMinutes()).padStart(2, "0");
+
+  return `${formatMailSearchDate(date)} ${hour}:${minute}`;
+}
+
+function runCinemaSchedule(searchRange: MailSearchRange, logger: Logger): void {
   // メールからチケット情報を取得する
-  const tickets = fetchTickets(getTicketMailSources(), searchStartDateTime, logger);
+  const tickets = fetchTickets(getTicketMailSources(), searchRange, logger);
 
   // 対象のチケットがない場合、空配列に対する reduce を避けて終了する
   if (tickets.length === 0) {
@@ -139,7 +209,7 @@ function buildGmailMessageLink(messageId: string): string {
  */
 function fetchTickets(
   sources: readonly TicketMailSource[],
-  searchStartDateTime: Date,
+  searchRange: MailSearchRange,
   logger: Logger,
 ): Ticket[] {
   if (sources.length === 0) {
@@ -147,7 +217,9 @@ function fetchTickets(
     return [];
   }
 
-  const searchCriteria = buildTicketMailSearchCriteria(sources, searchStartDateTime);
+  // Gmail の検索クエリは日単位でしか絞れないため、ここでは開始日だけを渡して
+  // 粗く絞り込み、期間の厳密な判定はメッセージごとの日時比較で行う。
+  const searchCriteria = buildTicketMailSearchCriteria(sources, searchRange.start);
   logger.debug(`fetchTickets: 検索条件 = ${searchCriteria}`);
 
   const threads = GmailApp.search(searchCriteria);
@@ -169,9 +241,16 @@ function fetchTickets(
         `fetchTickets: スレッド[${threadIndex}] メッセージ[${messageIndex}] from=${fromAddress} date=${messageDate.toISOString()} subject="${message.getSubject()}" link=${messageLink}`,
       );
 
-      if (messageDate.getTime() < searchStartDateTime.getTime()) {
+      if (messageDate.getTime() < searchRange.start.getTime()) {
         logger.debug(
-          `fetchTickets: スレッド[${threadIndex}] メッセージ[${messageIndex}] は検索開始日時より前のためスキップします。`,
+          `fetchTickets: スレッド[${threadIndex}] メッセージ[${messageIndex}] は検索対象期間より前のためスキップします。`,
+        );
+        continue;
+      }
+
+      if (messageDate.getTime() >= searchRange.end.getTime()) {
+        logger.debug(
+          `fetchTickets: スレッド[${threadIndex}] メッセージ[${messageIndex}] は検索対象期間より後のためスキップします。`,
         );
         continue;
       }

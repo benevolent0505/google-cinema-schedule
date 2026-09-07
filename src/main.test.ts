@@ -5,6 +5,8 @@ import {
   debugMain,
   dedupeTicketsByTicketNumber,
   main,
+  parseExecutionDate,
+  resolveMailSearchRange,
 } from "./main";
 import type { Ticket, TicketMailSource } from "./ticket";
 
@@ -252,68 +254,173 @@ describe("main", () => {
 });
 
 describe("debugMain", () => {
-  it("uses the specified date and time as the mail search threshold", () => {
-    const beforeThresholdGetPlainBody = vi.fn(() => sampleBody);
-    const afterThresholdGetPlainBody = vi.fn(() => "not a ticket");
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("targets only mails received within the specified execution date's range", () => {
+    // 仮想実行日 2025-03-02 の対象範囲は 2025-03-01 00:00 以上 2025-03-03 00:00 未満。
+    // 前後の境界にあるメールが除外されることを確認する。
+    const beforeRangeGetPlainBody = vi.fn(() => "not a ticket");
+    const inRangeGetPlainBody = vi.fn(() => sampleBody);
+    const afterRangeGetPlainBody = vi.fn(() => "not a ticket");
     const getMessages = vi.fn(() => [
       {
-        getDate: () => new Date("2025-03-01T09:59:59+09:00"),
-        getPlainBody: beforeThresholdGetPlainBody,
+        getDate: () => new Date("2025-02-28T23:59:59+09:00"),
+        getPlainBody: beforeRangeGetPlainBody,
         getFrom: () => "ticket@cinemacity.co.jp",
         getSubject: () => "予約確認",
         getId: () => "message-1",
       },
       {
-        getDate: () => new Date("2025-03-01T10:00:00+09:00"),
-        getPlainBody: afterThresholdGetPlainBody,
+        getDate: () => new Date("2025-03-01T00:00:00+09:00"),
+        getPlainBody: inRangeGetPlainBody,
         getFrom: () => "ticket@cinemacity.co.jp",
         getSubject: () => "予約確認",
         getId: () => "message-2",
       },
+      {
+        getDate: () => new Date("2025-03-03T00:00:00+09:00"),
+        getPlainBody: afterRangeGetPlainBody,
+        getFrom: () => "ticket@cinemacity.co.jp",
+        getSubject: () => "予約確認",
+        getId: () => "message-3",
+      },
     ]);
     const search = vi.fn(() => [{ getMessages, getFirstMessageSubject: () => "予約確認" }]);
-    const getDefaultCalendar = vi.fn();
+    const getDefaultCalendar = vi.fn(() => ({
+      createEvent: vi.fn(() => ({ getTitle: () => "君の名は。" })),
+      getEvents: vi.fn(() => []),
+    }));
     vi.stubGlobal("GmailApp", { search });
     vi.stubGlobal("CalendarApp", { getDefaultCalendar });
     vi.stubGlobal("PropertiesService", {
       getScriptProperties: () => ({ getProperty: () => null }),
     });
 
-    debugMain("2025-03-01T10:00:00+09:00");
+    debugMain("2025-03-02");
 
     expect(search).toHaveBeenCalledWith(expect.stringContaining("newer:2025-03-01"));
-    expect(beforeThresholdGetPlainBody).not.toHaveBeenCalled();
-    expect(afterThresholdGetPlainBody).toHaveBeenCalledOnce();
-    expect(getDefaultCalendar).not.toHaveBeenCalled();
+    expect(beforeRangeGetPlainBody).not.toHaveBeenCalled();
+    expect(inRangeGetPlainBody).toHaveBeenCalledOnce();
+    expect(afterRangeGetPlainBody).not.toHaveBeenCalled();
   });
 
-  it("reads the search threshold from Script Properties when no argument is given", () => {
+  it("logs the virtual execution date even when DEBUG_LOG_ENABLED is off", () => {
+    // 指定した実行日が効いているかは実行ログでしか確認できないため、
+    // デバッグログが無効でも出力されることを確認する。
     const search = vi.fn(() => []);
-    const getProperty = vi.fn(() => "2025-03-01T10:00:00+09:00");
+    const info = vi.fn();
+    vi.stubGlobal("GmailApp", { search });
+    vi.stubGlobal("console", { ...console, info });
+    vi.stubGlobal("PropertiesService", {
+      getScriptProperties: () => ({ getProperty: () => null }),
+    });
+
+    debugMain("2025-03-02");
+
+    expect(info).toHaveBeenCalledWith(
+      "debugMain: 仮想実行日=2025-03-02 対象範囲=2025-03-01 00:00 以上 2025-03-03 00:00 未満",
+    );
+  });
+
+  it("reads the execution date from Script Properties when no argument is given", () => {
+    const search = vi.fn(() => []);
+    const getProperty = vi.fn((key: string) =>
+      key === "DEBUG_EXECUTION_DATE" ? "2025-03-02" : null,
+    );
     const getScriptProperties = vi.fn(() => ({ getProperty }));
     vi.stubGlobal("GmailApp", { search });
     vi.stubGlobal("PropertiesService", { getScriptProperties });
 
     debugMain();
 
-    expect(getProperty).toHaveBeenCalledWith("DEBUG_MAIL_SEARCH_START_DATETIME");
+    expect(getProperty).toHaveBeenCalledWith("DEBUG_EXECUTION_DATE");
     expect(search).toHaveBeenCalledWith(expect.stringContaining("newer:2025-03-01"));
   });
 
-  it("rejects an invalid search threshold", () => {
-    expect(() => debugMain("invalid")).toThrow(
-      "DEBUG_MAIL_SEARCH_START_DATETIME には有効な日時を指定してください: invalid",
+  it("prefers the argument over the Script Property", () => {
+    const search = vi.fn(() => []);
+    const getProperty = vi.fn((key: string) =>
+      key === "DEBUG_EXECUTION_DATE" ? "2025-03-02" : null,
+    );
+    const getScriptProperties = vi.fn(() => ({ getProperty }));
+    vi.stubGlobal("GmailApp", { search });
+    vi.stubGlobal("PropertiesService", { getScriptProperties });
+
+    debugMain("2025-04-10");
+
+    expect(search).toHaveBeenCalledWith(expect.stringContaining("newer:2025-04-09"));
+  });
+
+  it("rejects an execution date that is not in YYYY-MM-DD format", () => {
+    vi.stubGlobal("PropertiesService", {
+      getScriptProperties: () => ({ getProperty: () => null }),
+    });
+
+    expect(() => debugMain("2025-03-01T10:00:00+09:00")).toThrow(
+      "DEBUG_EXECUTION_DATE には YYYY-MM-DD 形式で日付を指定してください: 2025-03-01T10:00:00+09:00",
     );
   });
 
-  it("requires a search threshold when no argument or Script Property is set", () => {
+  it("requires an execution date when no argument or Script Property is set", () => {
     const getProperty = vi.fn(() => null);
     const getScriptProperties = vi.fn(() => ({ getProperty }));
     vi.stubGlobal("PropertiesService", { getScriptProperties });
 
     expect(() => debugMain()).toThrow(
-      "DEBUG_MAIL_SEARCH_START_DATETIME に検索開始日時を指定してください。",
+      "DEBUG_EXECUTION_DATE に実行日を YYYY-MM-DD 形式で指定してください。",
     );
+  });
+});
+
+describe("parseExecutionDate", () => {
+  it("parses a date as midnight in the runtime timezone", () => {
+    expect(parseExecutionDate("2025-03-02")).toEqual(new Date("2025-03-02T00:00:00+09:00"));
+  });
+
+  it("rejects a malformed date", () => {
+    expect(() => parseExecutionDate("2025-3-2")).toThrow(
+      "DEBUG_EXECUTION_DATE には YYYY-MM-DD 形式で日付を指定してください: 2025-3-2",
+    );
+  });
+
+  it("rejects a date that does not exist", () => {
+    // Date は 2025-02-30 を 3月へ繰り上げてしまうため、黙って別の日として
+    // 実行しないことを確認する。
+    expect(() => parseExecutionDate("2025-02-30")).toThrow(
+      "DEBUG_EXECUTION_DATE には実在する日付を指定してください: 2025-02-30",
+    );
+  });
+});
+
+describe("resolveMailSearchRange", () => {
+  it("spans from the previous day's midnight to the next day's midnight", () => {
+    expect(resolveMailSearchRange(new Date("2025-03-02T13:45:00+09:00"))).toEqual({
+      start: new Date("2025-03-01T00:00:00+09:00"),
+      end: new Date("2025-03-03T00:00:00+09:00"),
+    });
+  });
+
+  it("crosses a month boundary", () => {
+    expect(resolveMailSearchRange(new Date("2025-03-01T00:00:00+09:00"))).toEqual({
+      start: new Date("2025-02-28T00:00:00+09:00"),
+      end: new Date("2025-03-02T00:00:00+09:00"),
+    });
+  });
+
+  it("crosses a year boundary", () => {
+    expect(resolveMailSearchRange(new Date("2025-01-01T00:00:00+09:00"))).toEqual({
+      start: new Date("2024-12-31T00:00:00+09:00"),
+      end: new Date("2025-01-02T00:00:00+09:00"),
+    });
+  });
+
+  it("handles the end of a month", () => {
+    expect(resolveMailSearchRange(new Date("2025-01-31T00:00:00+09:00"))).toEqual({
+      start: new Date("2025-01-30T00:00:00+09:00"),
+      end: new Date("2025-02-01T00:00:00+09:00"),
+    });
   });
 });
 
