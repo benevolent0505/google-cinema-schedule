@@ -31,11 +31,6 @@ describe("parseMusashinokanBody", () => {
   });
 
   it("throws when a required field's value is missing", () => {
-    // canParse はラベルの有無しか見ないため、値だけを欠落させて
-    // canParse を通過させつつ抽出を失敗させる。canParse を満たしたのに
-    // 抽出に失敗した場合、undefined ではなく例外を投げる。呼び出し側
-    // (ticket.ts) がこれを「送信元の形式には一致したが解析に失敗した」
-    // ケースとして検知し、ログに残せるようにするため。
     const bodyWithoutSeatValue = sampleBody.replace("⑥座席番号：Ｅ－２", "⑥座席番号：");
 
     expect(() => parseMusashinokanBody(bodyWithoutSeatValue)).toThrow(

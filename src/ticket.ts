@@ -1,6 +1,3 @@
-/**
- * Shared ticket types and parser dispatching.
- */
 export type Ticket = {
   ticketNumber: string;
   title: string;
@@ -40,12 +37,6 @@ function findTicketSourceByFromAddress(
   );
 }
 
-/**
- * The sender address determines the parser exclusively - no fallback to
- * another parser once one is selected. A parser returning `undefined` and
- * one throwing are both reported via `onParseError`, since either means
- * this sender's mail no longer looks like what it used to.
- */
 export function parseTicketBody(
   body: string,
   fromAddress: string,

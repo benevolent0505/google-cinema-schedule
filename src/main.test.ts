@@ -83,9 +83,6 @@ describe("main", () => {
   });
 
   it("registers a ticket even when an existing event has the same title but a different ticket number", () => {
-    // 同じ作品を別日にもう一度観た場合、タイトルだけで既存判定すると
-    // 誤って登録がスキップされてしまう。チケット番号が異なれば登録される
-    // ことを確認する回帰テスト。
     const getDate = vi.fn(() => new Date());
     const getPlainBody = vi.fn(() => sampleBody);
     const getMessages = vi.fn(() => [
@@ -120,9 +117,6 @@ describe("main", () => {
   });
 
   it("logs an error and still registers other tickets when a mail matches a sender's format but fails to parse", () => {
-    // canParse は満たすが必須項目 (■座席) が欠けているメール。デバッグログの
-    // 有効・無効に関係なくエラーが出て、他の正常なチケットの登録は継続される
-    // ことを確認する。
     const brokenBody = sampleBody.replace("■座席\r\n[ A-10 ]\r\n", "");
     const getMessages = vi.fn(() => [
       {
@@ -259,8 +253,6 @@ describe("debugMain", () => {
   });
 
   it("targets only mails received within the specified execution date's range", () => {
-    // 仮想実行日 2025-03-02 の対象範囲は 2025-03-01 00:00 以上 2025-03-03 00:00 未満。
-    // 前後の境界にあるメールが除外されることを確認する。
     const beforeRangeGetPlainBody = vi.fn(() => "not a ticket");
     const inRangeGetPlainBody = vi.fn(() => sampleBody);
     const afterRangeGetPlainBody = vi.fn(() => "not a ticket");
@@ -307,8 +299,6 @@ describe("debugMain", () => {
   });
 
   it("logs the virtual execution date even when DEBUG_LOG_ENABLED is off", () => {
-    // 指定した実行日が効いているかは実行ログでしか確認できないため、
-    // デバッグログが無効でも出力されることを確認する。
     const search = vi.fn(() => []);
     const info = vi.fn();
     vi.stubGlobal("GmailApp", { search });
@@ -386,8 +376,6 @@ describe("parseExecutionDate", () => {
   });
 
   it("rejects a date that does not exist", () => {
-    // Date は 2025-02-30 を 3月へ繰り上げてしまうため、黙って別の日として
-    // 実行しないことを確認する。
     expect(() => parseExecutionDate("2025-02-30")).toThrow(
       "DEBUG_EXECUTION_DATE には実在する日付を指定してください: 2025-02-30",
     );
@@ -456,8 +444,6 @@ describe("dedupeTicketsByTicketNumber", () => {
   });
 
   it("keeps the first ticket and drops later ones with the same ticket number", () => {
-    // 予約確認メールの再送などで同じチケット番号のチケットが複数件
-    // 取得されても、同一実行内で1件に絞り込まれることを確認する。
     const first = buildTicket({ ticketNumber: "12345", sheet: "A-1" });
     const resend = buildTicket({ ticketNumber: "12345", sheet: "A-1" });
     const other = buildTicket({ ticketNumber: "67890", sheet: "B-2" });

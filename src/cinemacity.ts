@@ -1,9 +1,3 @@
-/**
- * Ticket parser for 立川シネマシティ reservation emails.
- *
- * The implementation is ported from the `theather-mail-parser` project
- * (`src/parsers/cinemacity-parser.ts`).
- */
 import { createTicketParser, pad2, parsePrice, parseSeats, toLines } from "./ticket-parser";
 import type { Reservation, Screening } from "./ticket-parser";
 
@@ -18,15 +12,6 @@ const CINEMACITY_LABELS = {
   totalPrice: "■合計金額",
 } as const;
 
-/**
- * Parse a Gmail message body into a `Ticket`, or return `undefined` when the
- * body is not a recognizable 立川シネマシティ reservation email.
- *
- * When the body matches this cinema's format (`cinemaCityCanParse`) but a
- * required field is missing or malformed, this throws instead of returning
- * `undefined` so the caller can tell "not this format" apart from "this
- * format, but failed to parse" and report the latter.
- */
 export const parseCinemaCityBody = createTicketParser({
   canParse: cinemaCityCanParse,
   parseReservation: cinemaCityParseReservation,

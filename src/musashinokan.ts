@@ -1,19 +1,8 @@
-/**
- * Ticket parser for 新宿武蔵野館 reservation emails.
- *
- * The implementation is ported from the `theather-mail-parser` project
- * (`src/parsers/musashinokan-parser.ts`). Reservation emails are sent from
- * `reserve@musashino.cineticket.jp` with the subject `インターネットチケット購入`.
- */
 import { createTicketParser, pad2, parsePrice, parseSeats, toLines } from "./ticket-parser";
 import type { Reservation, Screening } from "./ticket-parser";
 
 const MUSASHINOKAN_THEATER_NAME = "新宿武蔵野館";
 
-/**
- * 新宿武蔵野館の予約メールには上映終了時刻が含まれないため、開始時刻から
- * 既定の上映時間を加算して終了時刻を補完する。
- */
 const MUSASHINOKAN_DEFAULT_SCREENING_MINUTES = 120;
 
 const MUSASHINOKAN_LABELS = {
@@ -25,15 +14,6 @@ const MUSASHINOKAN_LABELS = {
   seats: "⑥座席番号：",
 } as const;
 
-/**
- * Parse a Gmail message body into a `Ticket`, or return `undefined` when the
- * body is not a recognizable 新宿武蔵野館 reservation email.
- *
- * When the body matches this cinema's format (`musashinokanCanParse`) but a
- * required field is missing or malformed, this throws instead of returning
- * `undefined` so the caller can tell "not this format" apart from "this
- * format, but failed to parse" and report the latter.
- */
 export const parseMusashinokanBody = createTicketParser({
   canParse: musashinokanCanParse,
   parseReservation: musashinokanParseReservation,

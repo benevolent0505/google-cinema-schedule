@@ -1,11 +1,3 @@
-/**
- * Shared types and building blocks for cinema-specific ticket parsers.
- *
- * Each cinema's parser (`src/cinemacity.ts`, `src/musashinokan.ts`) supplies
- * only its own `canParse` / `parseReservation`, since those differ per email
- * format; the `Reservation` -> `Ticket` conversion and common extraction
- * helpers live here.
- */
 import type { Ticket } from "./ticket";
 
 export type Theater = {

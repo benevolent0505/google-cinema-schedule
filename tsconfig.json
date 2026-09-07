@@ -1,8 +1,5 @@
 {
   "compilerOptions": {
-    // Google Apps Script runs on the V8 runtime. Target a conservative
-    // language level and avoid DOM-only libs (GAS globals such as `Logger`
-    // and `console` come from @types/google-apps-script).
     "target": "ES2019",
     "module": "ESNext",
     "moduleResolution": "bundler",
