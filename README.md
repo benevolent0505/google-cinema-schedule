@@ -1,8 +1,8 @@
 # google-cinema-schedule
 
 映画館のチケット予約確認メールを Gmail から読み取り、まだ登録されていない上映を
-Google カレンダーへ自動登録する Google Apps Script です。立川シネマシティと
-新宿武蔵野館の予約メールに対応しています。
+Google カレンダーへ自動登録する Google Apps Script です。立川シネマシティ、
+新宿武蔵野館、グランドシネマサンシャイン池袋の予約メールに対応しています。
 
 TypeScript で書き、esbuild で 1 つのスクリプトへバンドルして
 [clasp](https://github.com/google/clasp) で Apps Script プロジェクトへ反映します。

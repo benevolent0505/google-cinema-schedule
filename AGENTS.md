@@ -18,6 +18,7 @@ Apps Script の V8 ランタイムです。
 │   ├── ticket-sources.ts  # 送信元アドレスとパーサーの登録一覧
 │   ├── ticket-parser.ts   # パーサー共通の型と抽出ヘルパー
 │   ├── cinemacity.ts      # 立川シネマシティ用パーサー
+│   ├── cinemasunshine.ts  # グランドシネマサンシャイン池袋用パーサー
 │   ├── musashinokan.ts    # 新宿武蔵野館用パーサー
 │   └── *.test.ts          # Vitest のテスト
 ├── scripts/               # ビルド用スクリプト
