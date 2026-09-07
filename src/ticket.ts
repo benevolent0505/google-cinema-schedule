@@ -1,10 +1,7 @@
 /**
  * Shared ticket types and parser dispatching.
- *
- * Google Apps Script shares a single global scope across every source file,
- * so build-target files intentionally do not use `import` / `export`.
  */
-type Ticket = {
+export type Ticket = {
   ticketNumber: string;
   title: string;
   startTime: Date;
@@ -15,12 +12,12 @@ type Ticket = {
 
 type TicketParser = (body: string) => Ticket | undefined;
 
-type TicketMailSource = {
+export type TicketMailSource = {
   mailAddresses: readonly string[];
   parseBody: TicketParser;
 };
 
-type TicketParseFailure =
+export type TicketParseFailure =
   | { reason: "unknown_sender"; fromAddress: string }
   | { reason: "unrecognized_body"; source: TicketMailSource }
   | { reason: "error"; source: TicketMailSource; error: unknown };
@@ -49,7 +46,7 @@ function findTicketSourceByFromAddress(
  * one throwing are both reported via `onParseError`, since either means
  * this sender's mail no longer looks like what it used to.
  */
-function parseTicketBody(
+export function parseTicketBody(
   body: string,
   fromAddress: string,
   sources: readonly TicketMailSource[],
@@ -76,5 +73,3 @@ function parseTicketBody(
     return undefined;
   }
 }
-
-Object.assign(globalThis, { parseTicketBody });

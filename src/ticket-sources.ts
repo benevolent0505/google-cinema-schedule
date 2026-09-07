@@ -4,7 +4,11 @@
  * To support another cinema, add its parser in a separate source file and
  * register the sender addresses and parser in this list.
  */
-function getTicketMailSources(): TicketMailSource[] {
+import { parseCinemaCityBody } from "./cinemacity";
+import { parseMusashinokanBody } from "./musashinokan";
+import type { TicketMailSource } from "./ticket";
+
+export function getTicketMailSources(): TicketMailSource[] {
   return [
     {
       mailAddresses: ["ticket@cinemacity.co.jp"],
@@ -16,5 +20,3 @@ function getTicketMailSources(): TicketMailSource[] {
     },
   ];
 }
-
-Object.assign(globalThis, { getTicketMailSources });

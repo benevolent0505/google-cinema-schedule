@@ -6,10 +6,16 @@
  * cinema ticket confirmation emails from Gmail and registers any missing
  * screenings into the default Google Calendar.
  *
- * Shared types, parsers, and source settings come from the other build-target
- * files. In Apps Script all files share one global scope, so no `import` is
- * needed.
+ * This is the esbuild entry point; everything it depends on is pulled in via
+ * `import` and bundled into a single `dist/main.js`. `scripts/build.mjs`
+ * appends top-level `function main()` / `function debugMain()` wrappers
+ * after the bundle so Apps Script's function picker and trigger UI (which
+ * scan the script text for top-level declarations) can still find them.
  */
+import { getTicketMailSources } from "./ticket-sources";
+import { parseTicketBody } from "./ticket";
+import type { Ticket, TicketMailSource } from "./ticket";
+
 const calendarSearchKey = "映画館チケット";
 const legacyCalendarSearchKeys = ["シネマシティ"];
 const debugMailSearchStartDateTimeProperty = "DEBUG_MAIL_SEARCH_START_DATETIME";
@@ -39,7 +45,7 @@ function debugLog(message: string): void {
   }
 }
 
-function main(): void {
+export function main(): void {
   // 実行日の1日前からのメールを取得する
   const now = new Date(Date.now());
   const searchStartDateTime = new Date(
@@ -60,7 +66,7 @@ function main(): void {
  * `clasp run` から日時を引数で渡せるほか、Apps Script エディタから引数なしで
  * 実行する場合は Script Properties の `DEBUG_MAIL_SEARCH_START_DATETIME` を使用する。
  */
-function debugMain(searchStartDateTime?: string): void {
+export function debugMain(searchStartDateTime?: string): void {
   const specifiedDateTime =
     searchStartDateTime ??
     PropertiesService.getScriptProperties().getProperty(debugMailSearchStartDateTimeProperty);
@@ -209,7 +215,7 @@ function fetchTickets(sources: readonly TicketMailSource[], searchStartDateTime:
   return uniqueTickets;
 }
 
-function dedupeTicketsByTicketNumber(tickets: readonly Ticket[]): Ticket[] {
+export function dedupeTicketsByTicketNumber(tickets: readonly Ticket[]): Ticket[] {
   const seenTicketNumbers = new Set<string>();
   const uniqueTickets: Ticket[] = [];
 
@@ -225,7 +231,7 @@ function dedupeTicketsByTicketNumber(tickets: readonly Ticket[]): Ticket[] {
   return uniqueTickets;
 }
 
-function buildTicketMailSearchCriteria(
+export function buildTicketMailSearchCriteria(
   sources: readonly TicketMailSource[],
   searchStartDateTime: Date,
 ): string {
@@ -283,17 +289,3 @@ function registerEvent(ticket: Ticket): GoogleAppsScript.Calendar.CalendarEvent 
 function buildTicketNumberMarker(ticketNumber: string): string {
   return `チケット番号: ${ticketNumber}`;
 }
-
-// Register entry points on the global scope. Apps Script can already run a
-// top-level function by name; listing them here documents the public surface
-// and keeps linters from flagging them as "unused".
-//
-// `buildTicketMailSearchCriteria` and `dedupeTicketsByTicketNumber` are also
-// listed so their unit tests can reach them via globalThis, following the
-// pattern used for pure functions in other files.
-Object.assign(globalThis, {
-  buildTicketMailSearchCriteria,
-  dedupeTicketsByTicketNumber,
-  debugMain,
-  main,
-});

@@ -5,6 +5,8 @@
  * (`src/parsers/musashinokan-parser.ts`). Reservation emails are sent from
  * `reserve@musashino.cineticket.jp` with the subject `インターネットチケット購入`.
  */
+import type { Ticket } from "./ticket";
+
 type MusashinokanTheater = {
   name: string;
   location: string;
@@ -56,7 +58,7 @@ const MUSASHINOKAN_LABELS = {
  * `undefined` so the caller can tell "not this format" apart from "this
  * format, but failed to parse" and report the latter.
  */
-function parseMusashinokanBody(body: string): Ticket | undefined {
+export function parseMusashinokanBody(body: string): Ticket | undefined {
   if (!musashinokanCanParse(body)) {
     return undefined;
   }
@@ -182,5 +184,3 @@ function musashinokanParseSeats(value: string): string[] {
 function musashinokanPad2(value: string): string {
   return value.padStart(2, "0");
 }
-
-Object.assign(globalThis, { parseMusashinokanBody });

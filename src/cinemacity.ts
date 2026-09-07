@@ -4,6 +4,8 @@
  * The implementation is ported from the `theather-mail-parser` project
  * (`src/parsers/cinemacity-parser.ts`).
  */
+import type { Ticket } from "./ticket";
+
 type CinemaCityTheater = {
   name: string;
   location: string;
@@ -50,7 +52,7 @@ const CINEMACITY_LABELS = {
  * `undefined` so the caller can tell "not this format" apart from "this
  * format, but failed to parse" and report the latter.
  */
-function parseCinemaCityBody(body: string): Ticket | undefined {
+export function parseCinemaCityBody(body: string): Ticket | undefined {
   if (!cinemaCityCanParse(body)) {
     return undefined;
   }
@@ -226,5 +228,3 @@ function cinemaCityPad2(value: string): string {
 function cinemaCityEscapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
-
-Object.assign(globalThis, { parseCinemaCityBody });

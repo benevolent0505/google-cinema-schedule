@@ -1,24 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import "./ticket";
-import "./cinemacity";
-import "./musashinokan";
-import "./ticket-sources";
-import "./main";
-
-type Ticket = {
-  ticketNumber: string;
-  title: string;
-  startTime: Date;
-  endTime: Date;
-  theater: string;
-  sheet: string;
-};
-
-type TicketMailSource = {
-  mailAddresses: readonly string[];
-  parseBody: (body: string) => Ticket | undefined;
-};
+import {
+  buildTicketMailSearchCriteria,
+  debugMain,
+  dedupeTicketsByTicketNumber,
+  main,
+} from "./main";
+import type { Ticket, TicketMailSource } from "./ticket";
 
 const sampleBody = [
   "■チケット番号：12345",
@@ -37,17 +25,6 @@ const sampleBody = [
   "1,000円(手数料込)",
   "",
 ].join("\r\n");
-
-const { buildTicketMailSearchCriteria, dedupeTicketsByTicketNumber, debugMain, main } =
-  globalThis as typeof globalThis & {
-    buildTicketMailSearchCriteria: (
-      sources: readonly TicketMailSource[],
-      newerThreshold: Date,
-    ) => string;
-    dedupeTicketsByTicketNumber: (tickets: readonly Ticket[]) => Ticket[];
-    debugMain: (searchStartDateTime?: string) => void;
-    main: () => void;
-  };
 
 describe("main", () => {
   afterEach(() => {

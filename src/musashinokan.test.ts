@@ -1,22 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import "./ticket";
-import "./musashinokan";
-
-type Ticket = {
-  ticketNumber: string;
-  title: string;
-  startTime: Date;
-  endTime: Date;
-  theater: string;
-  sheet: string;
-};
-
-const parseMusashinokanBody = (
-  globalThis as typeof globalThis & {
-    parseMusashinokanBody: (body: string) => Ticket | undefined;
-  }
-).parseMusashinokanBody;
+import { parseMusashinokanBody } from "./musashinokan";
 
 const sampleBody = [
   "①予約番号：1234567",

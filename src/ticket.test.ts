@@ -1,36 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
-import "./ticket";
-
-type Ticket = {
-  ticketNumber: string;
-  title: string;
-  startTime: Date;
-  endTime: Date;
-  theater: string;
-  sheet: string;
-};
-
-type TicketMailSource = {
-  mailAddresses: readonly string[];
-  parseBody: (body: string) => Ticket | undefined;
-};
-
-type TicketParseFailure =
-  | { reason: "unknown_sender"; fromAddress: string }
-  | { reason: "unrecognized_body"; source: TicketMailSource }
-  | { reason: "error"; source: TicketMailSource; error: unknown };
-
-const parseTicketBody = (
-  globalThis as typeof globalThis & {
-    parseTicketBody: (
-      body: string,
-      fromAddress: string,
-      sources: readonly TicketMailSource[],
-      onParseError?: (failure: TicketParseFailure) => void,
-    ) => Ticket | undefined;
-  }
-).parseTicketBody;
+import { parseTicketBody } from "./ticket";
+import type { Ticket, TicketMailSource } from "./ticket";
 
 const ticket: Ticket = {
   ticketNumber: "ticket-1",
