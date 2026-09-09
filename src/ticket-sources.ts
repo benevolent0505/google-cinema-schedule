@@ -1,5 +1,6 @@
 import { parseCinemaCityBody } from "./cinemacity";
 import { parseCinemaSunshineBody } from "./cinemasunshine";
+import { parseKinoCinemaBody } from "./kinocinema";
 import { parseMusashinokanBody } from "./musashinokan";
 import type { TicketMailSource } from "./ticket";
 
@@ -16,6 +17,10 @@ export function getTicketMailSources(): TicketMailSource[] {
     {
       mailAddresses: ["noreply@ticket-cinemasunshine.com"],
       parseBody: parseCinemaSunshineBody,
+    },
+    {
+      mailAddresses: ["kinocinema-shinjuku-ticket@eigaland.com"],
+      parseBody: parseKinoCinemaBody,
     },
   ];
 }
