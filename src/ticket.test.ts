@@ -9,6 +9,7 @@ const ticket: Ticket = {
   startTime: new Date("2025-03-01T10:00:00+09:00"),
   endTime: new Date("2025-03-01T12:00:00+09:00"),
   theater: "テスト劇場",
+  screen: "スクリーン1",
   sheet: "A-1",
 };
 

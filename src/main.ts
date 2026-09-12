@@ -14,6 +14,14 @@ export type MailSearchRange = {
   end: Date;
 };
 
+export type FetchedTicket = {
+  ticket: Ticket;
+  mail: {
+    receivedAt: Date;
+    messageLink: string;
+  };
+};
+
 function isDebugLogEnabled(): boolean {
   const value = PropertiesService.getScriptProperties().getProperty(debugLogEnabledProperty);
 
@@ -111,15 +119,15 @@ function runCinemaSchedule(searchRange: MailSearchRange, logger: Logger): void {
   }
 
   const minStartTime = tickets
-    .map((ticket) => ticket.startTime)
+    .map(({ ticket }) => ticket.startTime)
     .reduce((a, b) => (a.getTime() < b.getTime() ? a : b));
   const maxEndTime = tickets
-    .map((ticket) => ticket.endTime)
+    .map(({ ticket }) => ticket.endTime)
     .reduce((a, b) => (a.getTime() > b.getTime() ? a : b));
 
   const existingEvents = fetchExistingEvents(minStartTime, maxEndTime);
 
-  const willRegisterTickets = tickets.filter((ticket) => {
+  const willRegisterTickets = tickets.filter(({ ticket }) => {
     // タイトルの部分一致ではなく、description に埋め込んだチケット番号で照合する。
     // タイトルだけで見ると、同じ作品を別日にもう一度観た場合や、短いタイトルが
     // 無関係な予定に一致した場合に、登録すべきチケットを誤ってスキップしてしまう。
@@ -134,8 +142,8 @@ function runCinemaSchedule(searchRange: MailSearchRange, logger: Logger): void {
     return !isExist;
   });
 
-  for (const ticket of willRegisterTickets) {
-    const event = registerEvent(ticket);
+  for (const fetchedTicket of willRegisterTickets) {
+    const event = registerEvent(fetchedTicket);
     logger.info(`Registered: ${event.getTitle()}`);
   }
 }
@@ -148,7 +156,7 @@ function fetchTickets(
   sources: readonly TicketMailSource[],
   searchRange: MailSearchRange,
   logger: Logger,
-): Ticket[] {
+): FetchedTicket[] {
   if (sources.length === 0) {
     logger.debug("fetchTickets: チケットメールの取得元が未設定のため終了します。");
     return [];
@@ -162,7 +170,7 @@ function fetchTickets(
   const threads = GmailApp.search(searchCriteria);
   logger.debug(`fetchTickets: 検索スレッド数 = ${threads.length}`);
 
-  let tickets: Ticket[] = [];
+  let tickets: FetchedTicket[] = [];
 
   for (const [threadIndex, thread] of threads.entries()) {
     const messages = thread.getMessages();
@@ -171,7 +179,7 @@ function fetchTickets(
     );
 
     for (const [messageIndex, message] of messages.entries()) {
-      const messageDate = message.getDate();
+      const messageDate = new Date(message.getDate().getTime());
       const fromAddress = message.getFrom();
       const messageLink = buildGmailMessageLink(message.getId());
       logger.debug(
@@ -218,7 +226,16 @@ function fetchTickets(
         logger.debug(
           `fetchTickets: スレッド[${threadIndex}] メッセージ[${messageIndex}] 解析成功 title="${ticket.title}" start=${ticket.startTime.toISOString()} end=${ticket.endTime.toISOString()}`,
         );
-        tickets = [...tickets, ticket];
+        tickets = [
+          ...tickets,
+          {
+            ticket,
+            mail: {
+              receivedAt: messageDate,
+              messageLink,
+            },
+          },
+        ];
       }
     }
   }
@@ -235,20 +252,22 @@ function fetchTickets(
   return uniqueTickets;
 }
 
-export function dedupeTicketsByTicketNumber(tickets: readonly Ticket[]): Ticket[] {
-  const seenTicketNumbers = new Set<string>();
-  const uniqueTickets: Ticket[] = [];
+export function dedupeTicketsByTicketNumber(tickets: readonly FetchedTicket[]): FetchedTicket[] {
+  const uniqueTickets = new Map<string, FetchedTicket>();
 
-  for (const ticket of tickets) {
-    if (seenTicketNumbers.has(ticket.ticketNumber)) {
-      continue;
+  for (const fetchedTicket of tickets) {
+    const ticketNumber = fetchedTicket.ticket.ticketNumber;
+    const current = uniqueTickets.get(ticketNumber);
+
+    if (
+      current === undefined ||
+      current.mail.receivedAt.getTime() < fetchedTicket.mail.receivedAt.getTime()
+    ) {
+      uniqueTickets.set(ticketNumber, fetchedTicket);
     }
-
-    seenTicketNumbers.add(ticket.ticketNumber);
-    uniqueTickets.push(ticket);
   }
 
-  return uniqueTickets;
+  return [...uniqueTickets.values()];
 }
 
 export function buildTicketMailSearchCriteria(
@@ -282,10 +301,10 @@ function fetchExistingEvents(
   );
 }
 
-function registerEvent(ticket: Ticket): GoogleAppsScript.Calendar.CalendarEvent {
+function registerEvent({ ticket, mail }: FetchedTicket): GoogleAppsScript.Calendar.CalendarEvent {
   const calendar = CalendarApp.getDefaultCalendar();
 
-  const description = `劇場: ${ticket.theater}\n座席: ${ticket.sheet}\n${buildTicketNumberMarker(ticket.ticketNumber)}\n検索用キーワード: ${calendarSearchKey}`;
+  const description = `スクリーン: ${ticket.screen}\n座席: ${ticket.sheet}\n元メール: ${mail.messageLink}\n${buildTicketNumberMarker(ticket.ticketNumber)}\n検索用キーワード: ${calendarSearchKey}`;
   const location = ticket.theater;
 
   const event = calendar.createEvent(ticket.title, ticket.startTime, ticket.endTime, {

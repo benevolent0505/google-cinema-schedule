@@ -30,7 +30,8 @@ describe("parseCinemaSunshineBody", () => {
       title: "タイトル",
       startTime: new Date("2026-12-31T00:00:00+09:00"),
       endTime: new Date("2026-12-31T23:59:00+09:00"),
-      theater: "シアター1",
+      theater: "グランドシネマサンシャイン 池袋",
+      screen: "シアター1",
       sheet: "ａ－１",
     });
   });
@@ -90,7 +91,8 @@ describe("parseCinemaSunshineBody", () => {
       title: "タイトル",
       startTime: new Date("2026-12-31T00:00:00+09:00"),
       endTime: new Date("2026-12-31T23:59:00+09:00"),
-      theater: "シアター1",
+      theater: "グランドシネマサンシャイン 池袋",
+      screen: "シアター1",
       sheet: "ａ－１",
     });
   });

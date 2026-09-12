@@ -2,7 +2,7 @@ import type { Ticket } from "./ticket";
 
 export type Theater = {
   name: string;
-  location: string;
+  screen: string;
 };
 
 export type Movie = {
@@ -39,7 +39,8 @@ export function createTicketParser(config: {
       title: reservation.movie.title,
       startTime: reservation.screening.start,
       endTime: reservation.screening.end,
-      theater: reservation.theater.location,
+      theater: reservation.theater.name,
+      screen: reservation.theater.screen,
       sheet: reservation.seats.join(", "),
     };
   };

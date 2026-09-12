@@ -1,7 +1,7 @@
 import { createTicketParser, pad2, parsePrice, toLines } from "./ticket-parser";
 import type { Reservation, Screening } from "./ticket-parser";
 
-const CINEMASUNSHINE_THEATER_NAME = "グランドシネマサンシャイン池袋";
+const CINEMASUNSHINE_THEATER_NAME = "グランドシネマサンシャイン 池袋";
 
 const CINEMASUNSHINE_LABELS = {
   ticketNumber: "[予約番号]",
@@ -45,7 +45,7 @@ function cinemaSunshineParseReservation(raw: string): Reservation {
   return {
     theater: {
       name: CINEMASUNSHINE_THEATER_NAME,
-      location: theaterLocation,
+      screen: theaterLocation,
     },
     movie: {
       title,

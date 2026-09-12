@@ -4,6 +4,7 @@ export type Ticket = {
   startTime: Date;
   endTime: Date;
   theater: string;
+  screen: string;
   sheet: string;
 };
 

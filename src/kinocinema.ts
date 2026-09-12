@@ -1,7 +1,7 @@
 import { createTicketParser, pad2, parsePrice, parseSeats, toLines } from "./ticket-parser";
 import type { Reservation, Screening } from "./ticket-parser";
 
-const KINOCINEMA_THEATER_NAME = "kino cinéma 新宿";
+const KINOCINEMA_THEATER_NAME = "kino cinema新宿";
 
 // kino cinéma 新宿の購入完了メールは上映開始時刻しか載せないため、開始時刻に既定の
 // 上映時間を足して終了時刻を補完する。
@@ -30,13 +30,13 @@ function kinoCinemaParseReservation(raw: string): Reservation {
   const ticketNumber = kinoCinemaExtractTicketNumber(lines);
   const title = kinoCinemaExtractTitle(lines);
   const screening = kinoCinemaParseScreening(lines);
-  const { location, seats } = kinoCinemaExtractScreenAndSeats(lines);
+  const { screen, seats } = kinoCinemaExtractScreenAndSeats(lines);
   const totalPrice = kinoCinemaExtractTotalPrice(lines);
 
   return {
     theater: {
       name: KINOCINEMA_THEATER_NAME,
-      location,
+      screen,
     },
     movie: {
       title,
@@ -103,7 +103,7 @@ function kinoCinemaParseScreening(lines: string[]): Screening {
 
 // スクリーン番号と座席番号は同じ行に並ぶため、1 行から両方を取り出す。
 function kinoCinemaExtractScreenAndSeats(lines: string[]): {
-  location: string;
+  screen: string;
   seats: string[];
 } {
   const line = lines.find(
@@ -124,7 +124,7 @@ function kinoCinemaExtractScreenAndSeats(lines: string[]): {
   }
 
   return {
-    location: screenMatch[1].trim(),
+    screen: screenMatch[1].trim(),
     seats: parseSeats(seatsMatch[1], /[、,／/\s]+/),
   };
 }

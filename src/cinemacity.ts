@@ -1,7 +1,10 @@
 import { createTicketParser, pad2, parsePrice, parseSeats, toLines } from "./ticket-parser";
 import type { Reservation, Screening } from "./ticket-parser";
 
-const CINEMACITY_THEATER_NAME = "立川シネマシティ";
+const CINEMACITY_THEATER_NAMES = {
+  one: "シネマシティ シネマ・ワン",
+  two: "シネマシティ シネマ・ツー",
+} as const;
 
 const CINEMACITY_LABELS = {
   ticketNumber: "■チケット番号",
@@ -34,6 +37,7 @@ function cinemaCityParseReservation(raw: string): Reservation {
     cinemaCityExtractValueAfterLabel(lines, CINEMACITY_LABELS.screeningTime),
   );
   const theaterLocation = cinemaCityExtractValueAfterLabel(lines, CINEMACITY_LABELS.theater);
+  const theaterName = cinemaCityResolveTheaterName(theaterLocation);
   const seatsValue = cinemaCityExtractValueAfterLabel(lines, CINEMACITY_LABELS.seats);
   const seats = parseSeats(seatsValue.replace(/[[\]]/g, ""), /[、,\s]+/);
   const totalPrice = parsePrice(
@@ -42,8 +46,8 @@ function cinemaCityParseReservation(raw: string): Reservation {
 
   return {
     theater: {
-      name: CINEMACITY_THEATER_NAME,
-      location: theaterLocation,
+      name: theaterName,
+      screen: theaterLocation,
     },
     movie: {
       title,
@@ -53,6 +57,17 @@ function cinemaCityParseReservation(raw: string): Reservation {
     seats,
     totalPrice,
   };
+}
+
+function cinemaCityResolveTheaterName(location: string): string {
+  if (/シネマ[・･]?ワン|cinema\s*one/i.test(location)) {
+    return CINEMACITY_THEATER_NAMES.one;
+  }
+  if (/シネマ[・･]?ツー|cinema\s*two/i.test(location)) {
+    return CINEMACITY_THEATER_NAMES.two;
+  }
+
+  throw new Error(`Unknown Cinema City theater: ${location}`);
 }
 
 function cinemaCityExtractInlineValue(raw: string, label: string): string {

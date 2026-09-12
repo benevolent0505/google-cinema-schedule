@@ -28,9 +28,33 @@ describe("parseCinemaCityBody", () => {
       title: "君の名は。",
       startTime: new Date("2025-03-01T10:00:00+09:00"),
       endTime: new Date("2025-03-01T12:30:00+09:00"),
-      theater: "シネマ・ツー/１階/a studio",
+      theater: "シネマシティ シネマ・ツー",
+      screen: "シネマ・ツー/１階/a studio",
       sheet: "A-10",
     });
+  });
+
+  it("シネマ・ワンの劇場欄から建物を区別した正式名称を設定する", () => {
+    const cinemaOneBody = sampleBody.replace(
+      "シネマ・ツー/１階/a studio",
+      "シネマ・ワン/２階/cinema one",
+    );
+
+    expect(parseCinemaCityBody(cinemaOneBody)).toMatchObject({
+      theater: "シネマシティ シネマ・ワン",
+      screen: "シネマ・ワン/２階/cinema one",
+    });
+  });
+
+  it("劇場欄からシネマ・ワン／シネマ・ツーを判定できない場合は例外を投げる", () => {
+    const unknownTheaterBody = `${sampleBody.replace(
+      "シネマ・ツー/１階/a studio",
+      "不明な劇場/a studio",
+    )}\nシネマ・ツー`;
+
+    expect(() => parseCinemaCityBody(unknownTheaterBody)).toThrow(
+      "Unknown Cinema City theater: 不明な劇場/a studio",
+    );
   });
 
   it("無関係な本文には undefined を返す", () => {

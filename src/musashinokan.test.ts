@@ -21,7 +21,8 @@ describe("parseMusashinokanBody", () => {
       title: "タイトル",
       startTime: new Date("2026-01-02T03:45:00+09:00"),
       endTime: new Date("2026-01-02T05:45:00+09:00"),
-      theater: "ｽｸﾘｰﾝ１",
+      theater: "新宿武蔵野館",
+      screen: "ｽｸﾘｰﾝ１",
       sheet: "Ｅ－２",
     });
   });
@@ -70,7 +71,8 @@ describe("parseMusashinokanBody", () => {
       title: "タイトル",
       startTime: new Date("2026-01-02T03:45:00+09:00"),
       endTime: new Date("2026-01-02T05:45:00+09:00"),
-      theater: "ｽｸﾘｰﾝ１",
+      theater: "新宿武蔵野館",
+      screen: "ｽｸﾘｰﾝ１",
       sheet: "Ｅ－２",
     });
   });

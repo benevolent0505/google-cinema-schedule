@@ -25,7 +25,8 @@ describe("parseKinoCinemaBody", () => {
       title: "タイトル",
       startTime: new Date("2026-01-23T12:34:00+09:00"),
       endTime: new Date("2026-01-23T14:34:00+09:00"),
-      theater: "1",
+      theater: "kino cinema新宿",
+      screen: "1",
       sheet: "Ｅ－２",
     });
   });

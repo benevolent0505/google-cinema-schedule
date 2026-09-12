@@ -51,7 +51,7 @@ function musashinokanParseReservation(raw: string): Reservation {
   return {
     theater: {
       name: MUSASHINOKAN_THEATER_NAME,
-      location: theaterLocation,
+      screen: theaterLocation,
     },
     movie: {
       title,

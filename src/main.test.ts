@@ -8,6 +8,7 @@ import {
   parseExecutionDate,
   resolveMailSearchRange,
 } from "./main";
+import type { FetchedTicket } from "./main";
 import type { Ticket, TicketMailSource } from "./ticket";
 
 const sampleBody = [
@@ -114,6 +115,40 @@ describe("main", () => {
 
     expect(info).not.toHaveBeenCalledWith("Skip: 君の名は。");
     expect(createEvent).toHaveBeenCalledOnce();
+  });
+
+  it("予定の場所に映画館の正式名称を設定し、説明欄にスクリーンと元メールを記載する", () => {
+    const getMessages = vi.fn(() => [
+      {
+        getDate: () => new Date(),
+        getPlainBody: () => sampleBody,
+        getFrom: () => "ticket@cinemacity.co.jp",
+        getSubject: () => "予約確認",
+        getId: () => "message-1",
+      },
+    ]);
+    const search = vi.fn(() => [{ getMessages, getFirstMessageSubject: () => "予約確認" }]);
+    const getEvents = vi.fn(() => []);
+    const createEvent = vi.fn(() => ({ getTitle: () => "君の名は。" }));
+    const getDefaultCalendar = vi.fn(() => ({ createEvent, getEvents }));
+    vi.stubGlobal("GmailApp", { search });
+    vi.stubGlobal("CalendarApp", { getDefaultCalendar });
+    vi.stubGlobal("PropertiesService", {
+      getScriptProperties: () => ({ getProperty: () => null }),
+    });
+
+    main();
+
+    expect(createEvent).toHaveBeenCalledWith(
+      "君の名は。",
+      new Date("2025-03-01T10:00:00+09:00"),
+      new Date("2025-03-01T12:30:00+09:00"),
+      {
+        description:
+          "スクリーン: シネマ・ツー/１階/a studio\n座席: A-10\n元メール: https://mail.google.com/mail/u/0/#all/message-1\nチケット番号: 12345\n検索用キーワード: 映画館チケット",
+        location: "シネマシティ シネマ・ツー",
+      },
+    );
   });
 
   it("送信元の形式に一致したのに解析に失敗した場合、エラーを出しつつ他のチケットの登録は続ける", () => {
@@ -439,16 +474,56 @@ describe("dedupeTicketsByTicketNumber", () => {
     startTime: new Date("2025-03-01T10:00:00+09:00"),
     endTime: new Date("2025-03-01T12:00:00+09:00"),
     theater: "テスト劇場",
+    screen: "スクリーン1",
     sheet: "A-1",
     ...overrides,
   });
 
-  it("同じチケット番号は最初の 1 件だけ残し、予約確認メールの再送で重複しても二重登録しない", () => {
-    const first = buildTicket({ ticketNumber: "12345", sheet: "A-1" });
-    const resend = buildTicket({ ticketNumber: "12345", sheet: "A-1" });
-    const other = buildTicket({ ticketNumber: "67890", sheet: "B-2" });
+  const buildFetchedTicket = (
+    ticketOverrides: Partial<Ticket>,
+    receivedAt: string,
+    messageLink: string,
+  ): FetchedTicket => ({
+    ticket: buildTicket(ticketOverrides),
+    mail: {
+      receivedAt: new Date(receivedAt),
+      messageLink,
+    },
+  });
 
-    expect(dedupeTicketsByTicketNumber([first, resend, other])).toEqual([first, other]);
+  it("同じチケット番号では最も新しいメールを残し、再送後の情報とリンクを採用する", () => {
+    const older = buildFetchedTicket(
+      { ticketNumber: "12345", sheet: "A-1" },
+      "2025-03-01T09:00:00+09:00",
+      "https://mail.test/older",
+    );
+    const newer = buildFetchedTicket(
+      { ticketNumber: "12345", sheet: "A-2" },
+      "2025-03-01T10:00:00+09:00",
+      "https://mail.test/newer",
+    );
+    const other = buildFetchedTicket(
+      { ticketNumber: "67890", sheet: "B-2" },
+      "2025-03-01T08:00:00+09:00",
+      "https://mail.test/other",
+    );
+
+    expect(dedupeTicketsByTicketNumber([older, newer, other])).toEqual([newer, other]);
+  });
+
+  it("メールの走査順にかかわらず同じチケット番号の最新メールを残す", () => {
+    const newer = buildFetchedTicket(
+      { ticketNumber: "12345", sheet: "A-2" },
+      "2025-03-01T10:00:00+09:00",
+      "https://mail.test/newer",
+    );
+    const older = buildFetchedTicket(
+      { ticketNumber: "12345", sheet: "A-1" },
+      "2025-03-01T09:00:00+09:00",
+      "https://mail.test/older",
+    );
+
+    expect(dedupeTicketsByTicketNumber([newer, older])).toEqual([newer]);
   });
 
   it("空配列はそのまま返す", () => {
